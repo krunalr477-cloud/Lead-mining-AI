@@ -1,26 +1,223 @@
 @import "tailwindcss";
 
+/* =============================================================================
+   LeadMine AI — design tokens (Tailwind v4 CSS-first @theme)
+   Premium dark "command-center" palette. Values are BINDING per spec §2.
+   ============================================================================= */
+
+@theme {
+  /* ---- Backgrounds (deepest -> base surfaces) ---- */
+  --color-bg-0: #050607; /* app root / body */
+  --color-bg-1: #080a0d;
+  --color-bg-2: #0b0f14;
+
+  /* ---- Surfaces ---- */
+  --color-surface-1: #0e131a;
+  --color-surface-2: #111820;
+
+  /* Elevated panel + border are alpha-on-white so they read on any bg. */
+  --color-panel: rgba(255, 255, 255, 0.04);
+  --color-panel-strong: rgba(255, 255, 255, 0.06);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* ---- Text ---- */
+  --color-muted: #7b8494;
+  --color-ink: #f5f7fa;
+
+  /* ---- Semantic accents ---- */
+  --color-accent: #00f0a8; /* primary neon green */
+  --color-accent-2: #00e69a; /* secondary green (gradients/hover) */
+  --color-info: #61d7ff; /* cyan — running/queued/sending */
+  --color-warn: #f8c64e; /* amber — warning/soft bounce */
+  --color-danger: #ff4d5e; /* red — invalid/failed/hard bounce */
+  --color-review: #9d7cff; /* purple — review/catch-all/unknown */
+
+  /* ---- Fonts (wired to next/font CSS vars in layout.tsx) ---- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+
+  /* ---- Radii ---- */
+  --radius-panel: 14px;
+  --radius-control: 8px;
+}
+
+/* -----------------------------------------------------------------------------
+   Base layer
+   ----------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  border-color: var(--color-border);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-bg-0);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* PROHIBITION: no negative letter-spacing anywhere. */
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular figures for all mono/numeric contexts. */
+.font-mono {
+  font-feature-settings: "tnum" 1, "cv01" 1;
+}
+
+/* -----------------------------------------------------------------------------
+   Fixed, non-interactive background layer:
+   faint dot-grid + two radial accent glows. Pure CSS, no images.
+   Rendered once via <div class="app-backdrop" /> in the root layout.
+   ----------------------------------------------------------------------------- */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: var(--color-bg-0);
+  background-image:
+    radial-gradient(
+      600px 400px at 12% -8%,
+      rgba(0, 240, 168, 0.1),
+      transparent 60%
+    ),
+    radial-gradient(
+      720px 520px at 108% 12%,
+      rgba(97, 215, 255, 0.07),
+      transparent 62%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.035) 1px,
+      transparent 1px
+    );
+  background-size:
+    100% 100%,
+    100% 100%,
+    22px 22px;
+  background-position:
+    0 0,
+    0 0,
+    0 0;
+}
+
+/* Subtle top vignette so the dot-grid fades under the top bar. */
+.app-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 6, 7, 0.55) 0%,
+    transparent 22%,
+    transparent 78%,
+    rgba(5, 6, 7, 0.6) 100%
+  );
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Glows are static — no motion introduced. Kept explicit for clarity. */
+}
+
+/* -----------------------------------------------------------------------------
+   Utilities
+   ----------------------------------------------------------------------------- */
+
+/* Custom slim scrollbars in dark panels. */
+.lm-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.lm-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.lm-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
+}
+.lm-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Accessible focus ring in accent green. */
+.lm-focus:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@keyframes lm-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.lm-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.04) 63%
+  );
+  background-size: 200% 100%;
+  animation: lm-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lm-skeleton {
+    animation: none;
+  }
+}
+
+/* Dark accent checkbox for tables/selection. */
+.lm-checkbox {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-1);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+.lm-checkbox:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+.lm-checkbox:checked,
+.lm-checkbox:indeterminate {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.lm-checkbox:checked::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  clip-path: polygon(14% 44%, 0 65%, 43% 100%, 100% 16%, 82% 0, 40% 62%);
+  background: #04120c;
+}
+.lm-checkbox:indeterminate::after {
+  content: "";
+  width: 8px;
+  height: 2px;
+  background: #04120c;
+}
+.lm-checkbox:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

@@ -542,9 +542,15 @@ class TestPersistenceAndExport:
             mirror.unlink(missing_ok=True)
 
 
-def test_google_client_stub_raises() -> None:
+def test_google_client_requires_credentials_for_network() -> None:
+    """Constructing without creds is fine (DI); a real call demands them.
+
+    The real Sheets client is exercised end-to-end against a faked discovery
+    service in tests/unit/test_sheets_client_real.py — this only asserts the
+    no-credentials guard so an accidental live-mode call fails loudly.
+    """
     from app.sheetsync import GoogleSheetsClient
 
-    client = GoogleSheetsClient()
-    with pytest.raises(NotImplementedError, match="Phase 3"):
+    client = GoogleSheetsClient()  # no credentials -> construction still allowed
+    with pytest.raises(RuntimeError, match="requires OAuth credentials"):
         client.ensure_spreadsheet(uuid.uuid4())

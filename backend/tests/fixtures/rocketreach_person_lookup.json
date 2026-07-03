@@ -1,0 +1,22 @@
+{
+  "id": 998877,
+  "name": "Ada Lovelace",
+  "first_name": "Ada",
+  "last_name": "Lovelace",
+  "current_employer": "Analytical Engines Ltd",
+  "current_title": "Chief Technology Officer",
+  "current_work_email": "ada.lovelace@analyticalengines.com",
+  "current_work_phone": "+1-415-555-0100",
+  "linkedin_url": "https://www.linkedin.com/in/ada-lovelace",
+  "emails": [
+    {"email": "ada.lovelace@analyticalengines.com", "type": "professional", "smtp_valid": "valid"},
+    {"email": "ada@personal.example.com", "type": "personal", "smtp_valid": "unknown"}
+  ],
+  "phones": [
+    {"number": "+1-415-555-0100", "type": "work"}
+  ],
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/ada-lovelace",
+    "facebook": "https://www.facebook.com/ada.lovelace"
+  }
+}

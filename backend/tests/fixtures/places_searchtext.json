@@ -1,0 +1,36 @@
+{
+  "places": [
+    {
+      "id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+      "displayName": { "text": "Sharma & Associates Chartered Accountants", "languageCode": "en" },
+      "formattedAddress": "402, Iscon Emporio, Satellite, Ahmedabad, Gujarat 380015, India",
+      "internationalPhoneNumber": "+91 79 4000 1234",
+      "websiteUri": "https://www.sharmaca.co.in/services",
+      "rating": 4.6,
+      "userRatingCount": 128,
+      "location": { "latitude": 23.0245, "longitude": 72.5079 },
+      "addressComponents": [
+        { "longText": "Ahmedabad", "shortText": "Ahmedabad", "types": ["locality", "political"] },
+        { "longText": "Gujarat", "shortText": "GJ", "types": ["administrative_area_level_1", "political"] },
+        { "longText": "India", "shortText": "IN", "types": ["country", "political"] },
+        { "longText": "380015", "shortText": "380015", "types": ["postal_code"] }
+      ]
+    },
+    {
+      "id": "ChIJP3Sa8ziYEmsRUKgyFmh9AQM",
+      "displayName": { "text": "Mehta Patel & Co LLP", "languageCode": "en" },
+      "formattedAddress": "12 CG Road, Navrangpura, Ahmedabad, Gujarat 380009, India",
+      "websiteUri": "http://mehtapatel.in",
+      "rating": 4.2,
+      "userRatingCount": 47,
+      "location": { "latitude": 23.0333, "longitude": 72.5610 },
+      "addressComponents": [
+        { "longText": "Ahmedabad", "shortText": "Ahmedabad", "types": ["locality", "political"] },
+        { "longText": "Gujarat", "shortText": "GJ", "types": ["administrative_area_level_1", "political"] },
+        { "longText": "India", "shortText": "IN", "types": ["country", "political"] },
+        { "longText": "380009", "shortText": "380009", "types": ["postal_code"] }
+      ]
+    }
+  ],
+  "nextPageToken": "PAGE2TOKEN"
+}

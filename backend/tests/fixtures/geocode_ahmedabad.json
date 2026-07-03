@@ -1,0 +1,15 @@
+{
+  "status": "OK",
+  "results": [
+    {
+      "formatted_address": "Ahmedabad, Gujarat, India",
+      "place_id": "ChIJSdRbuoKEXjkRFmVPYRHdzk8",
+      "geometry": { "location": { "lat": 23.022505, "lng": 72.5713621 } },
+      "address_components": [
+        { "long_name": "Ahmedabad", "short_name": "Ahmedabad", "types": ["locality", "political"] },
+        { "long_name": "Gujarat", "short_name": "GJ", "types": ["administrative_area_level_1", "political"] },
+        { "long_name": "India", "short_name": "IN", "types": ["country", "political"] }
+      ]
+    }
+  ]
+}

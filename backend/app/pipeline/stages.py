@@ -829,19 +829,21 @@ def sync_contact_row(session: Session, tenant_id: uuid.UUID, contact_id: uuid.UU
 
 
 def _enqueue(session: Session, tenant_id: uuid.UUID, tab: str, row_key: str) -> None:
+    # enqueue_upsert is DB-only (no client I/O), so any client works; use the
+    # non-persisting Fake to avoid disk writes and credential lookups.
     from app.sheetsync.client import FakeSheetsClient
     from app.sheetsync.engine import SheetSyncEngine
 
-    engine = SheetSyncEngine(session, FakeSheetsClient(tenant_id))
+    engine = SheetSyncEngine(session, FakeSheetsClient(tenant_id, persist=False))
     engine.enqueue_upsert(session, tenant_id, tab, row_key)
 
 
 def run_sync(session: Session, tenant_id: uuid.UUID) -> dict:
     """Set up the spreadsheet (idempotent) and flush every DB-backed tab."""
-    from app.sheetsync.client import FakeSheetsClient
     from app.sheetsync.engine import SheetSyncEngine
+    from app.sheetsync.factory import get_sheets_client
 
-    client = FakeSheetsClient.load(tenant_id)
+    client = get_sheets_client(tenant_id, session)
     engine = SheetSyncEngine(session, client)
     engine.setup_spreadsheet(tenant_id)
     results = engine.flush_all(tenant_id)

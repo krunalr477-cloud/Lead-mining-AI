@@ -122,11 +122,11 @@ async def sheet_events(
 
 def _setup(tenant_id: uuid.UUID) -> str:
     from app.db import sync_session_factory
-    from app.sheetsync.client import FakeSheetsClient
     from app.sheetsync.engine import SheetSyncEngine
+    from app.sheetsync.factory import get_sheets_client
 
     with sync_session_factory() as session:
-        engine = SheetSyncEngine(session, FakeSheetsClient.load(tenant_id))
+        engine = SheetSyncEngine(session, get_sheets_client(tenant_id, session))
         spreadsheet_id = engine.setup_spreadsheet(tenant_id)
         session.commit()
     return spreadsheet_id

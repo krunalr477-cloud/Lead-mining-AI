@@ -10,8 +10,8 @@ from __future__ import annotations
 import uuid
 
 from app.pipeline import stages
-from app.sheetsync.client import FakeSheetsClient
 from app.sheetsync.engine import SheetSyncEngine
+from app.sheetsync.factory import get_sheets_client
 from app.workers.celery_app import app
 from app.workers.tasks._base import worker_session
 
@@ -22,7 +22,7 @@ __all__ = ["flush_all_tabs", "flush_sheet_tab", "setup_spreadsheet"]
 def setup_spreadsheet(self, tenant_id: str) -> dict:
     tid = uuid.UUID(str(tenant_id))
     with worker_session() as session:
-        engine = SheetSyncEngine(session, FakeSheetsClient.load(tid))
+        engine = SheetSyncEngine(session, get_sheets_client(tid, session))
         spreadsheet_id = engine.setup_spreadsheet(tid)
     return {"spreadsheet_id": spreadsheet_id}
 
@@ -31,7 +31,7 @@ def setup_spreadsheet(self, tenant_id: str) -> dict:
 def flush_sheet_tab(self, tenant_id: str, tab: str) -> dict:
     tid = uuid.UUID(str(tenant_id))
     with worker_session() as session:
-        engine = SheetSyncEngine(session, FakeSheetsClient.load(tid))
+        engine = SheetSyncEngine(session, get_sheets_client(tid, session))
         engine.setup_spreadsheet(tid)
         result = engine.flush_tab(tid, tab)
     return {"tab": result.tab, "appended": result.appended, "updated": result.updated}

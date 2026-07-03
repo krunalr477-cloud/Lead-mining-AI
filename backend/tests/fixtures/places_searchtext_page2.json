@@ -1,0 +1,19 @@
+{
+  "places": [
+    {
+      "id": "ChIJrTLr-GyuEmsRBfy61i59si0",
+      "displayName": { "text": "Iyer Financial Advisory", "languageCode": "en" },
+      "formattedAddress": "88 SG Highway, Bodakdev, Ahmedabad, Gujarat 380054, India",
+      "internationalPhoneNumber": "+91 79 2222 5678",
+      "rating": 3.9,
+      "userRatingCount": 8,
+      "location": { "latitude": 23.0410, "longitude": 72.5100 },
+      "addressComponents": [
+        { "longText": "Ahmedabad", "shortText": "Ahmedabad", "types": ["locality", "political"] },
+        { "longText": "Gujarat", "shortText": "GJ", "types": ["administrative_area_level_1", "political"] },
+        { "longText": "India", "shortText": "IN", "types": ["country", "political"] },
+        { "longText": "380054", "shortText": "380054", "types": ["postal_code"] }
+      ]
+    }
+  ]
+}

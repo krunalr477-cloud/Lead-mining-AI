@@ -35,10 +35,19 @@ export const queryKeys = {
     list: (filters?: Record<string, unknown>) =>
       ["contacts", "list", filters ?? {}] as const,
     detail: (contactId: string) => ["contacts", "detail", contactId] as const,
+    history: (contactId: string) =>
+      ["contacts", "history", contactId] as const,
   },
 
   validation: {
-    byJob: (jobId: string) => ["validation", "job", jobId] as const,
+    byJob: (jobId: string, filters?: Record<string, unknown>) =>
+      ["validation", "job", jobId, filters ?? {}] as const,
+    byContact: (contactId: string) =>
+      ["validation", "contact", contactId] as const,
+  },
+
+  queues: {
+    health: () => ["queues", "health"] as const,
   },
 
   sheets: {

@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 
 from app.adapters.base import SourceAdapter, SourceUnavailable
 from app.adapters.context import SourceRunContext
+from app.adapters.enrichment.rocketreach import RocketReachAdapter
+from app.adapters.llm.groq import GroqScorer
 from app.adapters.mock.company_websites import MockCompanyWebsitesAdapter
 from app.adapters.mock.directories import MockDirectoriesAdapter
 from app.adapters.mock.gated import (
@@ -38,8 +40,20 @@ from app.adapters.mock.providers import (
     MockMillionVerifierAdapter,
     MockRocketReachAdapter,
 )
+from app.adapters.sources.company_websites import CompanyWebsitesAdapter
+from app.adapters.sources.google_maps import GoogleMapsAdapter
+from app.adapters.validation.millionverifier import MillionVerifierAdapter
 from app.config import AdapterMode, get_settings
 from app.constants import Posture, SourceName
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from app.adapters.base import (
+        EmailVerifierAdapter,
+        EnrichmentAdapter,
+        LLMScorerAdapter,
+    )
 
 if TYPE_CHECKING:
     import redis
@@ -75,6 +89,89 @@ _MOCK_SOURCES: dict[SourceName, SourceAdapter] = {
     SourceName.INDEED: MockIndeedAdapter(),
     SourceName.LINKEDIN: MockLinkedInAdapter(),
 }
+
+
+def _build_google_maps_real() -> SourceAdapter | None:
+    """Real Google Maps adapter iff GOOGLE_MAPS_API_KEY resolves; else None."""
+    key = get_settings().google_maps_api_key
+    return GoogleMapsAdapter(api_key=key) if key else None
+
+
+def _build_company_websites_real() -> SourceAdapter | None:
+    """Real website crawler — no credential required (polite public HTTP crawl),
+    so it always builds; the mode gate in _resolve_adapter decides real-vs-mock."""
+    return CompanyWebsitesAdapter()
+
+
+# The real catalog: SourceName -> (real factory | None, mock instance).
+# The FIRST slot builds the REAL adapter (returning None when its required
+# credentials don't resolve); the SECOND slot is the always-available mock.
+# resolve_source() picks real vs mock by effective mode + credential presence.
+SOURCE_ADAPTERS: dict[
+    SourceName, tuple[Callable[[], SourceAdapter | None] | None, SourceAdapter]
+] = {
+    SourceName.GOOGLE_MAPS: (_build_google_maps_real, _MOCK_SOURCES[SourceName.GOOGLE_MAPS]),
+    SourceName.COMPANY_WEBSITES: (
+        _build_company_websites_real,
+        _MOCK_SOURCES[SourceName.COMPANY_WEBSITES],
+    ),
+    SourceName.DIRECTORIES: (None, _MOCK_SOURCES[SourceName.DIRECTORIES]),
+    SourceName.YELLOW_PAGES: (None, _MOCK_SOURCES[SourceName.YELLOW_PAGES]),
+    SourceName.CLUTCH: (None, _MOCK_SOURCES[SourceName.CLUTCH]),
+    SourceName.FACEBOOK_SIGNALS: (None, _MOCK_SOURCES[SourceName.FACEBOOK_SIGNALS]),
+    SourceName.SERP_JOBS: (None, _MOCK_SOURCES[SourceName.SERP_JOBS]),
+    SourceName.INDEED: (None, _MOCK_SOURCES[SourceName.INDEED]),
+    SourceName.LINKEDIN: (None, _MOCK_SOURCES[SourceName.LINKEDIN]),
+}
+
+
+# --------------------------------------------------------------------------- #
+# Provider registries (enrichment / verifier / LLM) — same (real|None, mock)
+# tuple shape as SOURCE_ADAPTERS. The FIRST slot is the REAL implementation; the
+# SECOND is the always-available mock. resolve_* picks real vs mock by effective
+# mode + whether the provider's required credential resolves in settings.
+# --------------------------------------------------------------------------- #
+
+# Provider required-credential -> settings attribute holding the key. The base
+# adapters declare uppercase env-style names (ROCKETREACH_API_KEY); Settings uses
+# the lowercased field, so we look the key up case-insensitively.
+_MOCK_ENRICHMENT = MockRocketReachAdapter()
+_MOCK_VERIFIER = MockMillionVerifierAdapter()
+_MOCK_SCORER = MockGroqScorerAdapter()
+
+ENRICHMENT_ADAPTERS: dict[str, tuple[EnrichmentAdapter | None, EnrichmentAdapter]] = {
+    "rocketreach": (RocketReachAdapter(), _MOCK_ENRICHMENT),
+}
+VERIFIER_ADAPTERS: dict[str, tuple[EmailVerifierAdapter | None, EmailVerifierAdapter]] = {
+    "millionverifier": (MillionVerifierAdapter(), _MOCK_VERIFIER),
+}
+LLM_ADAPTERS: dict[str, tuple[LLMScorerAdapter | None, LLMScorerAdapter]] = {
+    "groq": (GroqScorer(), _MOCK_SCORER),
+}
+
+
+def _credentials_resolve(required: list[str]) -> bool:
+    """True iff every required credential resolves to a non-empty settings value.
+
+    Base adapters declare uppercase env names (e.g. ``ROCKETREACH_API_KEY``);
+    Settings stores the lowercased field (``rocketreach_api_key``). We match on
+    the lowercased name so real providers activate exactly when the user's key is
+    present — and fall back to mock (DEMO_MODE / no key) otherwise.
+    """
+    settings = get_settings()
+    for cred in required:
+        value = getattr(settings, cred.lower(), None)
+        if not value:
+            return False
+    return True
+
+
+def _provider_mode() -> AdapterMode:
+    """Effective provider mode: MOCK under demo mode, else the global adapter mode."""
+    settings = get_settings()
+    if settings.demo_mode:
+        return AdapterMode.MOCK
+    return settings.adapter_mode
 
 
 @dataclass(slots=True)
@@ -125,14 +222,17 @@ class AdapterRegistry:
                 unavailable=SourceUnavailable(str(source_name), "unknown source", Posture.RED),
             )
 
-        adapter = _MOCK_SOURCES.get(name)
-        if adapter is None:
+        # The mock instance is the source *card* — posture / requires_signoff are
+        # class attributes shared by the real and mock implementations, so gate
+        # decisions read them off the always-present mock.
+        card = _MOCK_SOURCES.get(name)
+        if card is None:
             return ResolvedSource(
                 name, None, SourceUnavailable(name.value, "no adapter registered", Posture.RED)
             )
 
-        if adapter.posture == Posture.GREEN:
-            return ResolvedSource(name, adapter, None)
+        if card.posture == Posture.GREEN:
+            return ResolvedSource(name, self._resolve_adapter(name, card), None)
 
         # Gated: require enable + sign-off + global env flag.
         settings = get_settings()
@@ -140,14 +240,33 @@ class AdapterRegistry:
         flag_on = bool(getattr(settings, flag_name)) if flag_name else False
         if not enabled:
             reason = "source not enabled for tenant"
-        elif adapter.requires_signoff and not signed_off:
+        elif card.requires_signoff and not signed_off:
             reason = "source requires compliance sign-off"
         elif not flag_on:
             reason = f"global flag {flag_name} is off"
         else:
-            return ResolvedSource(name, adapter, None)
+            return ResolvedSource(name, self._resolve_adapter(name, card), None)
 
-        return ResolvedSource(name, None, SourceUnavailable(name.value, reason, adapter.posture))
+        return ResolvedSource(name, None, SourceUnavailable(name.value, reason, card.posture))
+
+    def _resolve_adapter(self, name: SourceName, card: SourceAdapter) -> SourceAdapter:
+        """Pick the REAL adapter when the mode allows and its required
+        credentials resolve; otherwise fall back to the mock.
+
+        Mode gate: MOCK (or demo mode) always uses the mock. REAL/AUTO try the
+        real factory in SOURCE_ADAPTERS' first slot, which returns None when the
+        source's required credentials are absent (then we serve the mock).
+        """
+        entry = SOURCE_ADAPTERS.get(name)
+        if entry is None:
+            return card
+        real_factory, mock = entry
+        if real_factory is None:
+            return mock
+        if self.mode_for(name) == AdapterMode.MOCK:
+            return mock
+        real = real_factory()
+        return real if real is not None else mock
 
     def mode_for(self, source_name: SourceName | str) -> AdapterMode:
         """Effective adapter mode (always MOCK in this phase / demo mode)."""
@@ -161,14 +280,18 @@ class AdapterRegistry:
 
     # -- providers ---------------------------------------------------------- #
 
-    def enrichment_adapter(self) -> MockRocketReachAdapter:
-        return _ENRICHMENT
+    def enrichment_adapter(self, provider: str = "rocketreach") -> EnrichmentAdapter:
+        """Resolve the enrichment provider: REAL when its key resolves + mode
+        allows, else the mock."""
+        return _resolve_provider(ENRICHMENT_ADAPTERS, provider, _MOCK_ENRICHMENT)
 
-    def verifier_adapter(self) -> MockMillionVerifierAdapter:
-        return _VERIFIER
+    def verifier_adapter(self, provider: str = "millionverifier") -> EmailVerifierAdapter:
+        """Resolve the verifier provider (real MillionVerifier or mock)."""
+        return _resolve_provider(VERIFIER_ADAPTERS, provider, _MOCK_VERIFIER)
 
-    def scorer_adapter(self) -> MockGroqScorerAdapter:
-        return _SCORER
+    def scorer_adapter(self, provider: str = "groq") -> LLMScorerAdapter:
+        """Resolve the LLM scorer provider (real Groq or heuristic mock)."""
+        return _resolve_provider(LLM_ADAPTERS, provider, _MOCK_SCORER)
 
     # -- context ------------------------------------------------------------ #
 
@@ -194,9 +317,27 @@ class AdapterRegistry:
         )
 
 
-_ENRICHMENT = MockRocketReachAdapter()
-_VERIFIER = MockMillionVerifierAdapter()
-_SCORER = MockGroqScorerAdapter()
+def _resolve_provider(registry, provider, default_mock):
+    """Pick REAL vs mock for a provider registry entry.
+
+    Real iff: the provider has a real implementation registered, the effective
+    provider mode is not MOCK (i.e. not demo mode), AND the real adapter's
+    required credentials resolve in settings. Otherwise the mock — so no-key /
+    DEMO_MODE always serves the deterministic mock and never touches the network.
+    """
+    entry = registry.get(provider)
+    if entry is None:
+        return default_mock
+    real, mock = entry
+    if real is None:
+        return mock
+    if _provider_mode() == AdapterMode.MOCK:
+        return mock
+    if not _credentials_resolve(real.required_credentials):
+        return mock
+    return real
+
+
 _REGISTRY = AdapterRegistry()
 
 

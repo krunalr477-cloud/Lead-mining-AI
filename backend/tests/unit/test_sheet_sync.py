@@ -259,6 +259,62 @@ class TestIdempotency:
         assert contact_maps[0].row_number == 2
 
 
+class TestStaleRowReconciliation:
+    """A key that drops out of the source (e.g. a Sales_Ready lead tombstoned
+    after a bounce) must be REMOVED from the tab — spec §5/§25."""
+
+    def _seed_lead(self, session: Session, tenant: Tenant, email: str) -> SalesReadyLead:
+        lead = SalesReadyLead(
+            tenant_id=tenant.id,
+            company_name="Acme",
+            email=email,
+            services=["audit"],
+            validation_status=FinalEmailStatus.VERIFIED,
+            tombstoned=False,
+            rank=0,
+        )
+        session.add(lead)
+        session.flush()
+        return lead
+
+    def test_tombstoned_lead_is_removed_from_sheet(self, session: Session, tenant: Tenant) -> None:
+        lead_a = self._seed_lead(session, tenant, "ada@acme.example")
+        lead_b = self._seed_lead(session, tenant, "grace@acme.example")
+
+        client = FakeSheetsClient(persist=False)
+        engine = SheetSyncEngine(session, client)
+        engine.setup_spreadsheet(tenant.id)
+
+        first = engine.flush_tab(tenant.id, "Sales_Ready_Leads")
+        assert first.appended == 2
+        assert len(client.tabs["Sales_Ready_Leads"]["rows"]) == 2
+
+        # Bounce → tombstone lead_a; it leaves the source query.
+        lead_a.tombstoned = True
+        session.flush()
+
+        second = engine.flush_tab(tenant.id, "Sales_Ready_Leads")
+        assert second.deleted == 1
+        rows = client.tabs["Sales_Ready_Leads"]["rows"]
+        assert len(rows) == 1
+        assert rows[0]["email"] == "grace@acme.example"
+
+        # The surviving lead's SheetRowMap row_number was remapped to 2.
+        maps = session.scalars(
+            select(SheetRowMap).where(
+                SheetRowMap.tenant_id == tenant.id,
+                SheetRowMap.tab == "Sales_Ready_Leads",
+            )
+        ).all()
+        assert len(maps) == 1
+        assert maps[0].row_key == str(lead_b.id)
+        assert maps[0].row_number == 2
+
+        # Idempotent afterwards: a third flush writes nothing.
+        third = engine.flush_tab(tenant.id, "Sales_Ready_Leads")
+        assert third.writes == 0
+
+
 class TestSystemFieldUpdate:
     def test_system_change_writes_exactly_that_row(self, session: Session, tenant: Tenant) -> None:
         company = _seed_company(session, tenant, "Acme")

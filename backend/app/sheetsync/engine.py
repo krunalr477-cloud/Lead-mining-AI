@@ -132,6 +132,7 @@ class FlushResult:
     tab: str
     appended: int = 0
     updated: int = 0
+    deleted: int = 0
     skipped: int = 0
     events_synced: int = 0
     events_failed: int = 0
@@ -139,7 +140,7 @@ class FlushResult:
     @property
     def writes(self) -> int:
         """Total mutating operations (0 ⇒ the flush was a no-op)."""
-        return self.appended + self.updated
+        return self.appended + self.updated + self.deleted
 
 
 def _hash_row(content_row: dict) -> str:
@@ -262,7 +263,39 @@ class SheetSyncEngine:
             else:
                 result.skipped += 1
 
-        # Apply appends, recording row_number in SheetRowMap.
+        # Order matters: updates (on current row numbers) -> deletions (shift
+        # rows, remap survivors) -> appends (land at the end of the shortened
+        # list). Doing appends first would leave their recorded row numbers stale
+        # after a same-flush deletion shifted the list.
+
+        # 1. Apply updates on existing rows, then refresh each changed hash.
+        if updates:
+            self.client.update_ranges(tab_name, spec.columns, updates)
+            row_to_key = {m.row_number: m.row_key for m in maps}
+            for upd in updates:
+                key = row_to_key.get(upd.row_number)
+                if key is not None:
+                    by_key[key].content_hash = update_hashes[key]
+                    by_key[key].updated_at = utcnow()
+                    result.updated += 1
+
+        # 2. Reconcile deletions: keys mapped in the sheet but no longer in the
+        # source (e.g. a Sales_Ready lead tombstoned after a bounce) must be
+        # REMOVED from the tab — otherwise the clean output leaks bounced/
+        # suppressed rows (spec §5 / §25). Delete their rows and drop their maps,
+        # then apply the client's row-number remap to the survivors.
+        stale = [m for m in maps if m.row_key not in seen_keys]
+        if stale:
+            remap = self.client.delete_rows(tab_name, [m.row_number for m in stale])
+            stale_keys = {m.row_key for m in stale}
+            for m in maps:
+                if m.row_key in stale_keys:
+                    self.session.delete(m)
+                elif m.row_number in remap:
+                    m.row_number = remap[m.row_number]
+            result.deleted += len(stale)
+
+        # 3. Apply appends last, recording each new row_number in SheetRowMap.
         if to_append:
             assigned = self.client.append_rows(
                 tab_name, spec.columns, [full for _, full, _ in to_append]
@@ -280,30 +313,13 @@ class SheetSyncEngine:
                 )
                 result.appended += 1
 
-        # Apply updates, then refresh each changed row's stored hash.
-        if updates:
-            self.client.update_ranges(tab_name, spec.columns, updates)
-            row_to_key = {m.row_number: m.row_key for m in maps}
-            for upd in updates:
-                key = row_to_key.get(upd.row_number)
-                if key is not None:
-                    by_key[key].content_hash = update_hashes[key]
-                    by_key[key].updated_at = utcnow()
-                    result.updated += 1
-
-        # Resolve pending events: synced if their key was reconciled this pass.
+        # Resolve pending events: every pending event for this tab is now
+        # reconciled — its key was appended, updated, unchanged, or deleted.
         now = utcnow()
         for ev in pending:
-            if ev.row_key in seen_keys or ev.row_key in by_key:
-                ev.status = SyncStatus.SYNCED
-                ev.synced_at = now
-                result.events_synced += 1
-            else:
-                # Key no longer in source (e.g. filtered out of Sales_Ready) —
-                # mark synced: the desired end-state (row absent) already holds.
-                ev.status = SyncStatus.SYNCED
-                ev.synced_at = now
-                result.events_synced += 1
+            ev.status = SyncStatus.SYNCED
+            ev.synced_at = now
+            result.events_synced += 1
 
         self.session.flush()
         return result

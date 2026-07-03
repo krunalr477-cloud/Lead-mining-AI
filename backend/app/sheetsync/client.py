@@ -86,6 +86,15 @@ class SheetsClient(ABC):
         """Apply partial-row updates, writing only each update's named columns."""
 
     @abstractmethod
+    def delete_rows(self, tab: str, row_numbers: Sequence[int]) -> dict[int, int]:
+        """Delete data rows by 1-based row number.
+
+        Deleting shifts lower rows up, so returns a ``{old_row_number:
+        new_row_number}`` remap for the rows that survived, letting the caller
+        keep its row-number index (SheetRowMap) consistent.
+        """
+
+    @abstractmethod
     def apply_formatting(self, tab: str, formatting: TabFormatting) -> None:
         """Record/apply freeze, filters, and status colors for a tab."""
 
@@ -111,6 +120,7 @@ class FakeSheetsClient(SheetsClient):
         # Write counters — a test asserts these are 0 on an idempotent flush.
         self.append_count = 0
         self.update_count = 0
+        self.delete_count = 0
 
     # ---- lifecycle ------------------------------------------------------- #
 
@@ -172,6 +182,28 @@ class FakeSheetsClient(SheetsClient):
                 target[col] = val
             self.update_count += 1
         self._flush_json()
+
+    def delete_rows(self, tab: str, row_numbers: Sequence[int]) -> dict[int, int]:
+        store = self.tabs.get(tab)
+        if store is None:
+            return {}
+        # Delete high indices first so earlier positions stay valid mid-loop.
+        drop_idx = sorted({rn - 2 for rn in row_numbers}, reverse=True)
+        for idx in drop_idx:
+            if 0 <= idx < len(store["rows"]):
+                del store["rows"][idx]
+                self.delete_count += 1
+        # Rebuild the old->new row-number remap for surviving rows.
+        removed = {rn for rn in row_numbers}
+        remap: dict[int, int] = {}
+        new_rn = 2
+        for old_rn in range(2, 2 + len(store["rows"]) + len(drop_idx)):
+            if old_rn in removed:
+                continue
+            remap[old_rn] = new_rn
+            new_rn += 1
+        self._flush_json()
+        return remap
 
     def apply_formatting(self, tab: str, formatting: TabFormatting) -> None:
         self.formatting[tab] = formatting
@@ -271,6 +303,9 @@ class GoogleSheetsClient(SheetsClient):
     def update_ranges(
         self, tab: str, header: Sequence[str], updates: Sequence[RangeUpdate]
     ) -> None:
+        raise NotImplementedError("wired in Phase 3")
+
+    def delete_rows(self, tab: str, row_numbers: Sequence[int]) -> dict[int, int]:
         raise NotImplementedError("wired in Phase 3")
 
     def apply_formatting(self, tab: str, formatting: TabFormatting) -> None:

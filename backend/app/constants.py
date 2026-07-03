@@ -1,5 +1,6 @@
 """Shared enums and constants. String enums stored as VARCHAR + CHECK constraints."""
 
+import uuid as _uuid
 from enum import StrEnum
 
 
@@ -188,6 +189,13 @@ QUEUES = [
     "export_jobs",
     "audit_jobs",
 ]
+
+# Canonical demo-workspace identity — shared by the demo seed and dev-login so
+# they converge on ONE tenant/user (never create duplicate "Demo Workspace" rows).
+DEMO_TENANT_ID = _uuid.UUID("00000000-0000-0000-0000-0000000d3010")
+DEMO_USER_ID = _uuid.UUID("00000000-0000-0000-0000-0000000d3011")
+DEMO_TENANT_NAME = "Demo Workspace"
+DEMO_ADMIN_EMAIL = "demo@leadmine.local"
 
 # Template variables available in campaign templates (spec §13).
 TEMPLATE_VARIABLES = [

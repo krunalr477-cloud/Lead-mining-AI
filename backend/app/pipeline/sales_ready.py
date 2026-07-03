@@ -53,7 +53,7 @@ def is_sales_ready(
     # Raw disqualifiers — defensive against inconsistent upstream state.
     if disposable or provider_invalid or not mx_ok:
         return False
-    if role_based and not allow_role_based:
+    if role_based and not allow_role_based:  # noqa: SIM103 — explicit gate reads clearer
         return False
 
     return True

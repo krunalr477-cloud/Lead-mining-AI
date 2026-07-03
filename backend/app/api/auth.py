@@ -3,11 +3,16 @@
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
-from app.constants import Role
+from app.constants import (
+    DEMO_ADMIN_EMAIL,
+    DEMO_TENANT_ID,
+    DEMO_TENANT_NAME,
+    DEMO_USER_ID,
+    Role,
+)
 from app.deps import CurrentUser, SessionDep
 from app.models import Tenant, User
 from app.schemas.auth import MeResponse, TenantOut, UserOut, provider_modes
@@ -21,9 +26,6 @@ from app.security.auth import (
 )
 
 router = APIRouter(tags=["auth"])
-
-DEV_TENANT_NAME = "Demo Workspace"
-DEV_USER_EMAIL = "demo@leadmine.local"
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -102,24 +104,21 @@ async def dev_login(response: Response, session: SessionDep) -> MeResponse:
     if settings.environment != "development":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
-    tenant = (
-        await session.execute(select(Tenant).where(Tenant.name == DEV_TENANT_NAME))
-    ).scalar_one_or_none()
+    # Upsert by the canonical demo IDs (shared with the demo seed) so dev-login
+    # and `make seed` always converge on ONE tenant/user — never a duplicate.
+    tenant = await session.get(Tenant, DEMO_TENANT_ID)
     if tenant is None:
-        tenant = Tenant(name=DEV_TENANT_NAME)
+        tenant = Tenant(id=DEMO_TENANT_ID, name=DEMO_TENANT_NAME)
         session.add(tenant)
         await session.flush()
 
-    user = (
-        await session.execute(
-            select(User).where(User.tenant_id == tenant.id, User.email == DEV_USER_EMAIL)
-        )
-    ).scalar_one_or_none()
+    user = await session.get(User, DEMO_USER_ID)
     if user is None:
         user = User(
+            id=DEMO_USER_ID,
             tenant_id=tenant.id,
             name="Demo Admin",
-            email=DEV_USER_EMAIL,
+            email=DEMO_ADMIN_EMAIL,
             role=Role.ADMIN,
         )
         session.add(user)

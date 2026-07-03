@@ -78,8 +78,8 @@ DEMO_IDS = {
     "audit_campaign": uuid.UUID("00000000-0000-0000-0000-0000000d3042"),
 }
 
-DEMO_TENANT_NAME = "Demo Workspace"
-DEMO_ADMIN_EMAIL = "demo@leadmine.local"
+from app.constants import DEMO_ADMIN_EMAIL, DEMO_TENANT_NAME  # noqa: E402  (shared identity)
+
 DEMO_JOB_NAME = "Ahmedabad CA Firms — Audit & Tax"
 
 # Spec §21 job parameters (verbatim).

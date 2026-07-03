@@ -3,13 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Map as MapIcon,
-  Minus,
-  Table2,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Table2 } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { MicroLabel } from "@/components/ui/MicroLabel";

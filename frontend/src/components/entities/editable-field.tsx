@@ -50,10 +50,14 @@ export function EditableField({
   const [draft, setDraft] = useState(value ?? "");
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
-  // Keep local draft synced when the upstream value changes and we're idle.
-  useEffect(() => {
-    if (!editing) setDraft(value ?? "");
-  }, [value, editing]);
+  // Keep the local draft synced when the upstream value changes and we're idle,
+  // derived during render (React's recommended alternative to a setState effect):
+  // track the last-seen prop and reconcile before the next paint.
+  const [lastValue, setLastValue] = useState(value ?? "");
+  if (!editing && (value ?? "") !== lastValue) {
+    setLastValue(value ?? "");
+    setDraft(value ?? "");
+  }
 
   useEffect(() => {
     if (editing && inputRef.current) {

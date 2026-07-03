@@ -51,6 +51,24 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const Comp = asChild ? Slot.Root : "button";
+
+  // In asChild mode, Radix Slot requires exactly one React element child, so we
+  // must NOT emit the (possibly `false`) loading node alongside it — that yields
+  // "Expected a single React element child". Pass children straight through; the
+  // spinner is only meaningful for real <button> usage anyway.
+  if (asChild) {
+    return (
+      <Comp
+        ref={ref}
+        className={cn(buttonVariants({ variant, size }), className)}
+        disabled={disabled || loading}
+        {...props}
+      >
+        {children}
+      </Comp>
+    );
+  }
+
   return (
     <Comp
       ref={ref}

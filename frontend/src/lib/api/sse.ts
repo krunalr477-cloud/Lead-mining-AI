@@ -8,11 +8,10 @@ import {
 } from "@tanstack/react-query";
 import { API_BASE } from "./client";
 import { queryKeys } from "./keys";
-import type { Job, JobEvent, JobStatus } from "./schema";
+import type { Job, JobEvent } from "./schema";
 
 /** Max events retained per job in the cache (ring-buffer cap). */
 const MAX_EVENTS = 500;
-const TERMINAL: JobStatus[] = ["completed", "failed", "cancelled"];
 
 /** Stage -> approximate progress %, used when an event lacks explicit progress. */
 const STAGE_PROGRESS: Record<string, number> = {

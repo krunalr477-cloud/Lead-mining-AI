@@ -1,0 +1,107 @@
+name: leadmine
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: leadmine
+      POSTGRES_PASSWORD: leadmine
+      POSTGRES_DB: leadmine
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadmine -d leadmine"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Full profile: containerized application stack (production-parity).
+  # Day-to-day dev runs api/worker/beat/web natively — see Makefile `make dev`.
+  # ---------------------------------------------------------------------------
+
+  api:
+    profiles: ["full"]
+    build:
+      context: ./backend
+      target: api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://leadmine:leadmine@postgres:5432/leadmine
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    profiles: ["full"]
+    build:
+      context: ./backend
+      target: worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://leadmine:leadmine@postgres:5432/leadmine
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A app.workers.celery_app worker
+      -Q google_maps_jobs,website_scrape_jobs,directory_source_jobs,facebook_signal_jobs,job_signal_jobs,enrichment_jobs,validation_jobs,spreadsheet_sync_jobs,campaign_jobs,bounce_check_jobs,export_jobs,audit_jobs
+      --concurrency=8 --loglevel=INFO
+
+  beat:
+    profiles: ["full"]
+    build:
+      context: ./backend
+      target: api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://leadmine:leadmine@postgres:5432/leadmine
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app beat --loglevel=INFO
+
+  web:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      API_ORIGIN: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

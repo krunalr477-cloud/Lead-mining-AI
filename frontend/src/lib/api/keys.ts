@@ -59,19 +59,43 @@ export const queryKeys = {
     all: () => ["campaigns"] as const,
     list: () => ["campaigns", "list"] as const,
     detail: (campaignId: string) => ["campaigns", "detail", campaignId] as const,
+    queue: (campaignId: string, filters?: Record<string, unknown>) =>
+      ["campaigns", "queue", campaignId, filters ?? {}] as const,
+  },
+
+  templates: {
+    all: () => ["templates"] as const,
+    list: () => ["templates", "list"] as const,
+  },
+
+  outreach: {
+    all: () => ["outreach"] as const,
+    list: (filters?: Record<string, unknown>) =>
+      ["outreach", "list", filters ?? {}] as const,
   },
 
   bounces: {
+    all: () => ["bounces"] as const,
     list: (filters?: Record<string, unknown>) =>
       ["bounces", "list", filters ?? {}] as const,
   },
 
+  suppressions: {
+    all: () => ["suppressions"] as const,
+    list: () => ["suppressions", "list"] as const,
+  },
+
   exports: {
     list: () => ["exports", "list"] as const,
+    detail: (exportId: string) => ["exports", "detail", exportId] as const,
   },
 
   settings: {
     all: () => ["settings"] as const,
+    sources: () => ["settings", "sources"] as const,
+    integrations: () => ["settings", "integrations"] as const,
+    validationRules: () => ["settings", "validation-rules"] as const,
+    users: () => ["settings", "users"] as const,
     audit: (filters?: Record<string, unknown>) =>
       ["settings", "audit", filters ?? {}] as const,
   },

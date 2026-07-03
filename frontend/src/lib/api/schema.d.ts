@@ -449,6 +449,177 @@ export interface QueueHealth {
   total_pending: number;
 }
 
+/* ── Google Sheets sync ──────────────────────────────────────────────── */
+
+export interface SheetsStatus {
+  connected: boolean;
+  spreadsheet_id?: string | null;
+  /** Tab name -> row count. */
+  tabs: Record<string, number>;
+  row_count?: number;
+  last_synced_at: string | null;
+  pending_rows: number;
+  failed_rows: number;
+}
+
+export interface SheetsEvent {
+  id?: string;
+  tab?: string | null;
+  action?: string | null;
+  status?: string | null;
+  rows?: number | null;
+  message?: string | null;
+  created_at?: string | null;
+}
+
+/* ── Exports ─────────────────────────────────────────────────────────── */
+
+export type ExportFormat = "csv" | "xlsx" | "json" | "sheets";
+export type ExportScope = "raw" | "sales_ready";
+export type ExportStatus =
+  | "pending"
+  | "queued"
+  | "running"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export interface ExportRecord {
+  id: string;
+  format: ExportFormat | string;
+  scope: ExportScope | string;
+  status: ExportStatus | string;
+  row_count?: number | null;
+  file_size?: number | null;
+  download_url?: string | null;
+  error?: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface ExportCreate {
+  format: ExportFormat;
+  scope: ExportScope;
+  job_id?: string | null;
+}
+
+/* ── Settings ────────────────────────────────────────────────────────── */
+
+export interface Settings {
+  /** Free-form settings blob; extended as backend fields land. */
+  [key: string]: unknown;
+}
+
+/* ── Data source compliance ──────────────────────────────────────────── */
+
+export type SourcePosture = "green" | "amber" | "red";
+
+export interface DataSource {
+  name: string;
+  display_name?: string | null;
+  source_type?: string | null;
+  access_method?: string | null;
+  posture: SourcePosture | string;
+  enabled: boolean;
+  legal_note?: string | null;
+  requires_signoff?: boolean | null;
+  signed_off?: boolean | null;
+  signed_off_by?: string | null;
+  signed_off_at?: string | null;
+  last_success_at?: string | null;
+  last_failure_at?: string | null;
+  quota_used?: number | null;
+  quota_limit?: number | null;
+  rate_limit?: string | null;
+}
+
+export interface SourcePatch {
+  enabled?: boolean;
+}
+
+/* ── Integrations ────────────────────────────────────────────────────── */
+
+export type IntegrationStatus = "live" | "mock" | "not_configured";
+
+export interface Integration {
+  provider: string;
+  display_name?: string | null;
+  status: IntegrationStatus | string;
+  /** Server-provided masked key, e.g. "****ab12". Never a full secret. */
+  masked_key?: string | null;
+  last_verified_at?: string | null;
+  note?: string | null;
+  scopes?: string[] | null;
+}
+
+export interface IntegrationTestResult {
+  ok: boolean;
+  provider?: string;
+  status?: string;
+  message?: string | null;
+  latency_ms?: number | null;
+}
+
+/* ── Validation rules ────────────────────────────────────────────────── */
+
+export type CatchAllHandling = "review" | "reject" | "accept";
+export type RiskHandling = "review" | "reject" | "accept";
+export type UnknownRetryPolicy = "retry" | "review" | "reject";
+
+export interface ValidationRules {
+  disposable_domains: string[];
+  role_based_keywords: string[];
+  llm_threshold: number;
+  catch_all_handling: CatchAllHandling | string;
+  risk_handling: RiskHandling | string;
+  unknown_retry_policy: UnknownRetryPolicy | string;
+}
+
+export interface ValidationRulesPatch {
+  disposable_domains?: string[];
+  role_based_keywords?: string[];
+  llm_threshold?: number;
+  catch_all_handling?: string;
+  risk_handling?: string;
+  unknown_retry_policy?: string;
+}
+
+/* ── Users & invites ─────────────────────────────────────────────────── */
+
+export interface UserInvite {
+  email: string;
+  name?: string;
+  role: UserRole;
+}
+
+export interface UserPatch {
+  role?: UserRole;
+  name?: string;
+}
+
+/* ── Audit ───────────────────────────────────────────────────────────── */
+
+export interface AuditEntry {
+  id: string;
+  actor?: string | null;
+  actor_name?: string | null;
+  action: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  before?: unknown;
+  after?: unknown;
+  summary?: string | null;
+  created_at?: string | null;
+}
+
+export interface AuditFilters extends Record<string, unknown> {
+  q?: string;
+  action?: string;
+  entity_type?: string;
+  limit?: number;
+  offset?: number;
+}
+
 /* ── Query filter shapes ─────────────────────────────────────────────── */
 
 export interface JobsFilters extends Record<string, unknown> {
@@ -478,6 +649,237 @@ export interface ContactsFilters extends Record<string, unknown> {
   q?: string;
   limit?: number;
   offset?: number;
+}
+
+/* ── Campaigns / Outreach (§13 — routes typed from documented shapes) ── */
+
+/** Draft → Scheduled → Queued → Sending → Paused → Completed/Failed/Cancelled. */
+export type CampaignStatus =
+  | "draft"
+  | "scheduled"
+  | "queued"
+  | "sending"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** Per-message lifecycle for the outreach queue. */
+export type MessageStatus =
+  | "queued"
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "clicked"
+  | "replied"
+  | "hard_bounce"
+  | "soft_bounce"
+  | "blocked"
+  | "spam_complaint"
+  | "unsubscribed";
+
+/** The 12 supported template variables (§13). */
+export type TemplateVariable =
+  | "FirstName"
+  | "LastName"
+  | "FullName"
+  | "Company"
+  | "Industry"
+  | "City"
+  | "State"
+  | "Country"
+  | "Services"
+  | "Designation"
+  | "Website"
+  | "HiringSignal";
+
+export interface TrackingSettings {
+  opens: boolean;
+  clicks: boolean;
+  replies: boolean;
+  bounces: boolean;
+}
+
+export interface RateLimitSettings {
+  per_hour: number;
+  per_day: number;
+  /** "HH:mm" 24h. */
+  window_start?: string | null;
+  window_end?: string | null;
+  timezone?: string | null;
+}
+
+/** Aggregate counts on a campaign row/detail. */
+export interface CampaignStats {
+  recipients: number;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  bounced: number;
+  suppressed?: number;
+  open_rate?: number;
+  click_rate?: number;
+  reply_rate?: number;
+  bounce_rate?: number;
+}
+
+/** GET /campaigns row. */
+export interface Campaign {
+  id: string;
+  name: string;
+  status: CampaignStatus | string;
+  job_id: string | null;
+  job_name?: string | null;
+  from_account: string | null;
+  subject: string;
+  body: string;
+  ai_opener_enabled: boolean;
+  tracking: TrackingSettings;
+  rate_limit: RateLimitSettings;
+  stats: CampaignStats;
+  created_at: string;
+  updated_at?: string | null;
+  launched_at?: string | null;
+  completed_at?: string | null;
+  /** Estimated completion in seconds for the remaining queue. */
+  estimated_completion_seconds?: number | null;
+}
+
+/** Eligibility breakdown returned by campaign detail / create-preview. */
+export interface EligibilitySummary {
+  eligible: number;
+  /** Excluded counts keyed by reason. */
+  excluded: {
+    not_verified: number;
+    suppressed: number;
+    bounced: number;
+    unsubscribed: number;
+    role_based: number;
+  };
+  total: number;
+}
+
+/** GET /campaigns/{id} — detail. */
+export interface CampaignDetail extends Campaign {
+  eligibility?: EligibilitySummary;
+}
+
+/** POST /campaigns body. */
+export interface CampaignCreate {
+  name: string;
+  job_id?: string | null;
+  from_account?: string | null;
+  subject: string;
+  body: string;
+  ai_opener_enabled?: boolean;
+  tracking?: Partial<TrackingSettings>;
+  rate_limit?: Partial<RateLimitSettings>;
+}
+
+/** POST /campaigns/{id}/test body. */
+export interface CampaignTestRequest {
+  to?: string;
+  contact_id?: string;
+}
+
+/** Reusable subject/body template. */
+export interface Template {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  ai_opener_enabled?: boolean;
+  created_at?: string;
+}
+
+export interface TemplateCreate {
+  name: string;
+  subject: string;
+  body: string;
+  ai_opener_enabled?: boolean;
+}
+
+/** A single outreach-queue row (per email message). */
+export interface OutreachQueueRow {
+  queue_id: string;
+  campaign_id: string;
+  contact_id: string | null;
+  contact_name: string | null;
+  email: string;
+  company: string | null;
+  subject: string;
+  send_status: MessageStatus | string;
+  scheduled_at: string | null;
+  sent_at: string | null;
+  gmail_message_id: string | null;
+  opened: boolean;
+  replied: boolean;
+  bounced: boolean;
+  suppressed: boolean;
+}
+
+export interface OutreachQueueFilters extends Record<string, unknown> {
+  campaign_id?: string;
+  status?: MessageStatus | string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/* ── Bounces / Replies / Suppressions (§14) ──────────────────────────── */
+
+export type BounceType =
+  | "hard_bounce"
+  | "soft_bounce"
+  | "mailbox_full"
+  | "invalid_domain"
+  | "blocked"
+  | "spam_rejected"
+  | "rate_limited"
+  | "spam_complaint"
+  | "unsubscribe"
+  | "reply"
+  | "unknown";
+
+export interface BounceRow {
+  id: string;
+  email: string;
+  contact_id: string | null;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  /** "reply" vs a bounce class — drives the row's action set. */
+  event_type: "bounce" | "reply";
+  smtp_status_code: string | null;
+  bounce_type: BounceType | string | null;
+  reason: string | null;
+  diagnostic_code?: string | null;
+  gmail_message_id?: string | null;
+  detected_at: string;
+  suppressed: boolean;
+}
+
+export interface BouncesFilters extends Record<string, unknown> {
+  campaign_id?: string;
+  event_type?: "bounce" | "reply";
+  bounce_type?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface Suppression {
+  id: string;
+  email: string;
+  reason: string | null;
+  source?: string | null;
+  created_at: string;
+}
+
+export interface SuppressionCreate {
+  email: string;
+  reason?: string | null;
 }
 
 /* ── openapi-fetch `paths` map ───────────────────────────────────────── */
@@ -618,5 +1020,107 @@ export interface paths {
   };
   "/api/v1/queues/health": {
     get: { responses: { 200: Json<QueueHealth> } };
+  };
+  "/api/v1/sheets/status": {
+    get: { responses: { 200: Json<SheetsStatus> } };
+  };
+
+  "/api/v1/campaigns": {
+    get: { responses: { 200: Json<Campaign[]> } };
+    post: {
+      requestBody: Json<CampaignCreate>;
+      responses: { 200: Json<CampaignDetail>; 201: Json<CampaignDetail> };
+    };
+  };
+  "/api/v1/campaigns/{campaign_id}": {
+    get: {
+      parameters: { path: { campaign_id: string } };
+      responses: { 200: Json<CampaignDetail> };
+    };
+  };
+  "/api/v1/campaigns/{campaign_id}/test": {
+    post: {
+      parameters: { path: { campaign_id: string } };
+      requestBody?: Json<CampaignTestRequest>;
+      responses: { 200: Json<{ ok: boolean; message?: string }> };
+    };
+  };
+  "/api/v1/campaigns/{campaign_id}/launch": {
+    post: {
+      parameters: { path: { campaign_id: string } };
+      responses: { 200: Json<CampaignDetail> };
+    };
+  };
+  "/api/v1/campaigns/{campaign_id}/pause": {
+    post: {
+      parameters: { path: { campaign_id: string } };
+      responses: { 200: Json<CampaignDetail> };
+    };
+  };
+  "/api/v1/campaigns/{campaign_id}/resume": {
+    post: {
+      parameters: { path: { campaign_id: string } };
+      responses: { 200: Json<CampaignDetail> };
+    };
+  };
+  "/api/v1/campaigns/{campaign_id}/cancel": {
+    post: {
+      parameters: { path: { campaign_id: string } };
+      responses: { 200: Json<CampaignDetail> };
+    };
+  };
+  "/api/v1/campaigns/{campaign_id}/queue": {
+    get: {
+      parameters: { path: { campaign_id: string }; query?: OutreachQueueFilters };
+      responses: { 200: Json<OutreachQueueRow[]> };
+    };
+  };
+
+  "/api/v1/outreach": {
+    get: {
+      parameters: { query?: OutreachQueueFilters };
+      responses: { 200: Json<OutreachQueueRow[]> };
+    };
+  };
+
+  "/api/v1/templates": {
+    get: { responses: { 200: Json<Template[]> } };
+    post: {
+      requestBody: Json<TemplateCreate>;
+      responses: { 200: Json<Template>; 201: Json<Template> };
+    };
+  };
+  "/api/v1/templates/{template_id}": {
+    patch: {
+      parameters: { path: { template_id: string } };
+      requestBody: Json<Partial<TemplateCreate>>;
+      responses: { 200: Json<Template> };
+    };
+  };
+
+  "/api/v1/bounces": {
+    get: {
+      parameters: { query?: BouncesFilters };
+      responses: { 200: Json<BounceRow[]> };
+    };
+  };
+  "/api/v1/bounces/poll": {
+    post: {
+      responses: { 200: Json<{ detected: number; bounces: number; replies: number }> };
+    };
+  };
+
+  "/api/v1/suppressions": {
+    get: { responses: { 200: Json<Suppression[]> } };
+    post: {
+      requestBody: Json<SuppressionCreate>;
+      responses: { 200: Json<Suppression>; 201: Json<Suppression> };
+    };
+  };
+  "/api/v1/suppressions/{suppression_id}": {
+    delete: {
+      parameters: { path: { suppression_id: string } };
+      responses: { 200: Json<{ ok: boolean }>; 204: { content: never } };
+    };
   };
 }

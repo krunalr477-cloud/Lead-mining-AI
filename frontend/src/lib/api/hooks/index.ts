@@ -37,6 +37,48 @@ export {
   useCampaignPerformance,
 } from "./useDashboard";
 export { useQueueHealth } from "./useQueues";
+export {
+  useSheetsStatus,
+  useSheetsEvents,
+  useSyncSheets,
+  useConnectSheets,
+} from "./useSheets";
+export { useExports, useExport, useCreateExport } from "./useExports";
+export { useSettings, usePatchSettings } from "./useSettings";
+export {
+  useSources,
+  usePatchSource,
+  useSignoffSource,
+  type PatchSourceVars,
+} from "./useSources";
+export { useIntegrations, useTestIntegration } from "./useIntegrations";
+export {
+  useValidationRules,
+  usePatchValidationRules,
+} from "./useValidationRules";
+export {
+  useUsers,
+  useInviteUser,
+  usePatchUser,
+  type PatchUserVars,
+} from "./useUsers";
+export { useAudit } from "./useAudit";
+export {
+  useCampaigns,
+  useCampaign,
+  useCampaignQueue,
+  useCreateCampaign,
+  useLaunch,
+  usePause,
+  useResume,
+  useCancel,
+  useTestSend,
+  type TestSendVars,
+} from "./useCampaigns";
+export { useTemplates, useCreateTemplate } from "./useTemplates";
+export { useOutreachQueue } from "./useOutreach";
+export { useBounces, usePollBounces } from "./useBounces";
+export { useSuppressions } from "./useSuppressions";
 export { useCompanyMap } from "./useCompanyMap";
 export { useContactMap } from "./useContactMap";
 export { useJobStream, useJobEvents } from "../sse";

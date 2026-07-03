@@ -89,14 +89,14 @@ async def create_campaign(
     return campaign
 
 
-@router.get("", response_model=list[CampaignOut])
+@router.get("", response_model=list[CampaignDetail])
 async def list_campaigns(
     _actor: ReadActor,
     tenant_id: TenantId,
     session: SessionDep,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-) -> list[Campaign]:
+) -> list[CampaignDetail]:
     stmt = (
         select(Campaign)
         .where(Campaign.tenant_id == tenant_id)
@@ -104,7 +104,34 @@ async def list_campaigns(
         .limit(limit)
         .offset(offset)
     )
-    return list(await session.scalars(stmt))
+    campaigns = list(await session.scalars(stmt))
+    # Per-row send stats so the campaign list renders headline metrics without a
+    # follow-up detail fetch per row.
+    out: list[CampaignDetail] = []
+    for campaign in campaigns:
+        stats = await _stats(session, campaign.id)
+        out.append(_detail(campaign, stats))
+    return out
+
+
+def _detail(
+    campaign: Campaign,
+    stats: CampaignStats,
+    eligibility: EligibilitySummary | None = None,
+    estimated_hours: float | None = None,
+) -> CampaignDetail:
+    """Assemble a CampaignDetail from a campaign row + computed stats.
+
+    Only the stored (non-computed) CampaignOut fields are spread; the computed
+    serialization fields (subject/body/tracking/rate_limit/…) are read-only
+    properties and must not be passed to the constructor.
+    """
+    base = CampaignOut.model_validate(campaign).model_dump(exclude={"stats"})
+    for computed in ("subject", "body", "ai_opener_enabled", "tracking", "rate_limit"):
+        base.pop(computed, None)
+    return CampaignDetail(
+        **base, stats=stats, eligibility=eligibility, estimated_hours=estimated_hours
+    )
 
 
 async def _stats(session: SessionDep, campaign_id: uuid.UUID) -> CampaignStats:
@@ -157,11 +184,7 @@ async def get_campaign(
 ) -> CampaignDetail:
     campaign = await _get_campaign(session, tenant_id, campaign_id)
     stats = await _stats(session, campaign_id)
-    detail = CampaignDetail(
-        **CampaignOut.model_validate(campaign).model_dump(),
-        stats=stats,
-    )
-    return detail
+    return _detail(campaign, stats)
 
 
 @router.get("/{campaign_id}/eligibility", response_model=EligibilitySummary)
@@ -347,11 +370,7 @@ async def launch(
 
     await session.refresh(campaign)
     stats = await _stats(session, campaign_id)
-    return CampaignDetail(
-        **CampaignOut.model_validate(campaign).model_dump(),
-        stats=stats,
-        estimated_hours=summary.get("estimated_hours"),
-    )
+    return _detail(campaign, stats, estimated_hours=summary.get("estimated_hours"))
 
 
 async def _transition(

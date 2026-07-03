@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
 
 from app.constants import TEMPLATE_VARIABLES
 
@@ -60,6 +60,21 @@ class CampaignCreate(BaseModel):
     tracking_enabled: bool = True
 
 
+class TrackingSettings(BaseModel):
+    opens: bool
+    clicks: bool
+    replies: bool
+    bounces: bool
+
+
+class RateLimitSettings(BaseModel):
+    per_hour: int
+    per_day: int
+    window_start: str | None = None
+    window_end: str | None = None
+    timezone: str | None = None
+
+
 class CampaignOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,6 +93,36 @@ class CampaignOut(BaseModel):
     launched_at: datetime | None
     created_at: datetime
 
+    # --- frontend-facing serialization ------------------------------------ #
+    # The UI reads flat `subject`/`body`, an `ai_opener_enabled` flag, and
+    # `tracking`/`rate_limit` objects. Emit them as computed fields so the wire
+    # shape matches the client contract without renaming the stored columns.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def subject(self) -> str:
+        return self.subject_template
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def body(self) -> str:
+        return self.body_template
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def ai_opener_enabled(self) -> bool:
+        return False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def tracking(self) -> TrackingSettings:
+        on = self.tracking_enabled
+        return TrackingSettings(opens=on, clicks=on, replies=on, bounces=on)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def rate_limit(self) -> RateLimitSettings:
+        return RateLimitSettings(per_hour=self.rate_limit_per_hour, per_day=self.rate_limit_per_day)
+
 
 class CampaignStats(BaseModel):
     recipient_count: int = 0
@@ -89,6 +134,44 @@ class CampaignStats(BaseModel):
     bounced: int = 0
     queued: int = 0
     suppressed_skips: int = 0
+
+    # --- frontend-facing serialization ------------------------------------ #
+    # The UI reads `recipients` and per-metric rates (ratios 0..1). These are
+    # computed on serialization so the stored/wire shape satisfies both the
+    # campaign list and detail screens without a second field set.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def recipients(self) -> int:
+        return self.recipient_count
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def suppressed(self) -> int:
+        return self.suppressed_skips
+
+    def _rate(self, numerator: int) -> float:
+        base = self.sent or self.recipient_count
+        return round(numerator / base, 4) if base else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def open_rate(self) -> float:
+        return self._rate(self.opened)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def click_rate(self) -> float:
+        return self._rate(self.clicked)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def reply_rate(self) -> float:
+        return self._rate(self.replied)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def bounce_rate(self) -> float:
+        return self._rate(self.bounced)
 
 
 class EligibilitySummary(BaseModel):

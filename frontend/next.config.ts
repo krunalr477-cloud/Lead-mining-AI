@@ -4,6 +4,9 @@ const BACKEND_ORIGIN =
   process.env.LEADMINE_BACKEND_ORIGIN ?? "http://localhost:8000";
 
 const nextConfig: NextConfig = {
+  // Emit a self-contained server bundle (.next/standalone) for the Docker
+  // runner image — no node_modules copy, just `node server.js`.
+  output: "standalone",
   async rewrites() {
     return [
       {

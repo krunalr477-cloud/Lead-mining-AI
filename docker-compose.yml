@@ -44,6 +44,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://leadmine:leadmine@postgres:5432/leadmine
       REDIS_URL: redis://redis:6379/0
+      # Only this service migrates: the entrypoint runs `alembic upgrade head`
+      # when RUN_MIGRATIONS=1. worker/beat leave it unset so they never race.
+      RUN_MIGRATIONS: "1"
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -97,7 +100,9 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      API_ORIGIN: http://api:8000
+      # Consumed by next.config.ts rewrites() — proxies browser /api/* to the
+      # FastAPI service over the compose network (same-origin cookie flow).
+      LEADMINE_BACKEND_ORIGIN: http://api:8000
     depends_on:
       api:
         condition: service_healthy

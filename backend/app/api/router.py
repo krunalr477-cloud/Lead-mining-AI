@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api import (
+    audit,
     auth,
     bounces,
     campaigns,
@@ -12,8 +13,11 @@ from app.api import (
     events,
     exports,
     health,
+    integrations,
     jobs,
+    settings,
     sheets,
+    sources,
     suppressions,
     templates,
     users,
@@ -36,3 +40,7 @@ router.include_router(campaigns.router)
 router.include_router(bounces.router)
 router.include_router(templates.router)
 router.include_router(suppressions.router)
+router.include_router(settings.router)
+router.include_router(sources.router)
+router.include_router(integrations.router)
+router.include_router(audit.router)

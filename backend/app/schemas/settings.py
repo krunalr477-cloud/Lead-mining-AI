@@ -1,0 +1,150 @@
+"""Settings / admin API schemas (Pydantic v2).
+
+These back the five Settings screens (spec §17):
+- ``/settings``          — tenant campaign/send-window settings blob
+- ``/sources``           — data-source compliance rows (+ patch/signoff)
+- ``/integrations``      — provider connection cards (+ test)
+- ``/validation-rules``  — the knobs gating Sales_Ready_Leads
+- ``/audit``             — the mutation ledger
+
+The validation-rules view deliberately exposes *frontend* field names
+(``role_based_keywords`` / ``catch_all_handling`` / …) which differ from the
+keys the pipeline reads off the JSONB (``role_keywords`` / ``catch_all_policy``
+/ …). The router maps between the two so neither side has to change contract.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, time
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+__all__ = [
+    "AuditEntryOut",
+    "DataSourceOut",
+    "IntegrationOut",
+    "IntegrationTestResult",
+    "SettingsOut",
+    "SettingsPatch",
+    "SourcePatch",
+    "ValidationRulesOut",
+    "ValidationRulesPatch",
+]
+
+
+# --------------------------------------------------------------------------- #
+# /settings — tenant campaign / send-window blob
+# --------------------------------------------------------------------------- #
+
+
+class SettingsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    send_limit_per_hour: int
+    send_limit_per_day: int
+    send_window_start: time
+    send_window_end: time
+    timezone: str
+    unsubscribe_text: str
+    executives_can_send: bool
+
+
+class SettingsPatch(BaseModel):
+    send_limit_per_hour: int | None = Field(default=None, ge=1, le=100000)
+    send_limit_per_day: int | None = Field(default=None, ge=1, le=1000000)
+    send_window_start: time | None = None
+    send_window_end: time | None = None
+    timezone: str | None = Field(default=None, max_length=64)
+    unsubscribe_text: str | None = None
+    executives_can_send: bool | None = None
+
+
+# --------------------------------------------------------------------------- #
+# /sources — data-source compliance
+# --------------------------------------------------------------------------- #
+
+
+class DataSourceOut(BaseModel):
+    name: str
+    display_name: str | None = None
+    source_type: str | None = None
+    access_method: str | None = None
+    posture: str
+    enabled: bool
+    legal_note: str | None = None
+    requires_signoff: bool = False
+    signed_off: bool = False
+    signed_off_by: str | None = None
+    signed_off_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    rate_limit: str | None = None
+
+
+class SourcePatch(BaseModel):
+    enabled: bool | None = None
+
+
+# --------------------------------------------------------------------------- #
+# /integrations — provider connection cards
+# --------------------------------------------------------------------------- #
+
+
+class IntegrationOut(BaseModel):
+    provider: str
+    display_name: str | None = None
+    status: str  # "live" | "mock" | "not_configured"
+    masked_key: str | None = None
+    last_verified_at: datetime | None = None
+    note: str | None = None
+    scopes: list[str] | None = None
+
+
+class IntegrationTestResult(BaseModel):
+    ok: bool
+    provider: str
+    status: str
+    message: str | None = None
+    latency_ms: int | None = None
+
+
+# --------------------------------------------------------------------------- #
+# /validation-rules — frontend-shaped view over the JSONB rule set
+# --------------------------------------------------------------------------- #
+
+
+class ValidationRulesOut(BaseModel):
+    disposable_domains: list[str]
+    role_based_keywords: list[str]
+    llm_threshold: float
+    catch_all_handling: str
+    risk_handling: str
+    unknown_retry_policy: str
+
+
+class ValidationRulesPatch(BaseModel):
+    disposable_domains: list[str] | None = None
+    role_based_keywords: list[str] | None = None
+    llm_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    catch_all_handling: str | None = None
+    risk_handling: str | None = None
+    unknown_retry_policy: str | None = None
+
+
+# --------------------------------------------------------------------------- #
+# /audit — mutation ledger
+# --------------------------------------------------------------------------- #
+
+
+class AuditEntryOut(BaseModel):
+    id: uuid.UUID
+    actor: str | None = None
+    actor_name: str | None = None
+    action: str
+    entity_type: str | None = None
+    entity_id: str | None = None
+    before: Any | None = None
+    after: Any | None = None
+    created_at: datetime

@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Local data / artifacts
+exports/
+*.xlsx.mirror
+
+# Secrets (env is injected via compose env_file / environment, never baked in)
+.env
+.env.*
+!.env.example
+client_secret*.json
+*.token.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

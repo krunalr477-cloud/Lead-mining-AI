@@ -4,13 +4,18 @@ from fastapi import APIRouter
 
 from app.api import (
     auth,
+    bounces,
+    campaigns,
     companies,
     contacts,
     dashboard,
     events,
+    exports,
     health,
     jobs,
     sheets,
+    suppressions,
+    templates,
     users,
     validation,
 )
@@ -25,4 +30,9 @@ router.include_router(companies.router)
 router.include_router(contacts.router)
 router.include_router(validation.router)
 router.include_router(sheets.router)
+router.include_router(exports.router)
 router.include_router(dashboard.router)
+router.include_router(campaigns.router)
+router.include_router(bounces.router)
+router.include_router(templates.router)
+router.include_router(suppressions.router)

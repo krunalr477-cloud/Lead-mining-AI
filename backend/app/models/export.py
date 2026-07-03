@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.constants import ExportFormat, JobStatus
+from app.constants import ExportFormat, ExportScope, ExportTarget, JobStatus
 from app.db import Base, utcnow
 from app.models._shared import UUIDPk, enum_check, uuid_fk
 
@@ -19,12 +19,18 @@ class ExportJob(Base):
         Index("ix_export_jobs_tenant_id_created_at", "tenant_id", "created_at"),
         enum_check("format", ExportFormat),
         enum_check("status", JobStatus),
+        enum_check("scope", ExportScope),
+        enum_check("target", ExportTarget),
     )
 
     id: Mapped[UUIDPk]
     tenant_id: Mapped[uuid.UUID] = uuid_fk("tenants.id", ondelete="CASCADE", index=False)
     job_id: Mapped[uuid.UUID | None] = uuid_fk("mining_jobs.id", ondelete="SET NULL", nullable=True)
     format: Mapped[str] = mapped_column(String(10), default=ExportFormat.CSV)
+    # sales_ready = clean verified output; raw = full mined dataset.
+    scope: Mapped[str] = mapped_column(String(20), default=ExportScope.SALES_READY)
+    # file = downloadable CSV/XLSX/JSON; google_sheets = flush to the spreadsheet.
+    target: Mapped[str] = mapped_column(String(20), default=ExportTarget.FILE)
     status: Mapped[str] = mapped_column(String(20), default=JobStatus.QUEUED)
     # Local path or object-storage key, depending on the export driver.
     file_path: Mapped[str | None] = mapped_column(Text)

@@ -1,0 +1,53 @@
+{
+  "search_metadata": {
+    "id": "demo-serpapi-facebook-pages",
+    "status": "Success"
+  },
+  "search_parameters": {
+    "engine": "google",
+    "q": "site:facebook.com \"Sharma & Associates Chartered Accountants\" Ahmedabad",
+    "google_domain": "google.com"
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "Sharma & Associates Chartered Accountants | Facebook",
+      "link": "https://www.facebook.com/SharmaAssociatesCA",
+      "displayed_link": "https://www.facebook.com › SharmaAssociatesCA",
+      "snippet": "Chartered accountancy firm in Ahmedabad offering audit, tax and advisory services. We're hiring audit associates.",
+      "rich_snippet": {
+        "top": {
+          "extensions": ["Accountant", "Ahmedabad, India"]
+        }
+      }
+    },
+    {
+      "position": 2,
+      "title": "Ahmedabad CA Community",
+      "link": "https://www.facebook.com/groups/ahmedabadca",
+      "displayed_link": "https://www.facebook.com › groups › ahmedabadca",
+      "snippet": "A private group for chartered accountants in Ahmedabad."
+    },
+    {
+      "position": 3,
+      "title": "Ramesh Sharma",
+      "link": "https://www.facebook.com/profile.php?id=100001234567890",
+      "displayed_link": "https://www.facebook.com › profile.php",
+      "snippet": "Personal profile — should never be captured."
+    },
+    {
+      "position": 4,
+      "title": "Sharma & Associates - Career Openings | Facebook",
+      "link": "https://m.facebook.com/SharmaAssociatesCA/jobs",
+      "displayed_link": "https://m.facebook.com › SharmaAssociatesCA › jobs",
+      "snippet": "Open positions at Sharma & Associates."
+    },
+    {
+      "position": 5,
+      "title": "Unrelated Company | LinkedIn",
+      "link": "https://www.linkedin.com/company/unrelated",
+      "displayed_link": "https://www.linkedin.com › company",
+      "snippet": "Not a facebook link at all."
+    }
+  ]
+}

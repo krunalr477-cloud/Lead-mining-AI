@@ -1,0 +1,30 @@
+From: Mail Delivery Subsystem <mailer-daemon@googlemail.com>
+To: sender@leadmine.local
+Subject: Delivery Status Notification (Failure)
+Content-Type: multipart/report; report-type=delivery-status; boundary="BOUNDARYFULL"
+Message-ID: <dsn-full@mailer-daemon>
+
+--BOUNDARYFULL
+Content-Type: text/plain; charset=UTF-8
+
+The recipient's mailbox is full and can't accept messages now.
+
+--BOUNDARYFULL
+Content-Type: message/delivery-status
+
+Reporting-MTA: dns; googlemail.com
+
+Final-Recipient: rfc822; fullbox@example.com
+Action: failed
+Status: 5.2.2
+Diagnostic-Code: smtp; 552 5.2.2 The email account that you tried to reach is over quota (mailbox full).
+
+--BOUNDARYFULL
+Content-Type: text/rfc822-headers
+
+To: fullbox@example.com
+From: sender@leadmine.local
+Subject: Follow up
+Message-ID: <lm-33333333-3333-3333-3333-333333333333@leadmine.local>
+
+--BOUNDARYFULL--

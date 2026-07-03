@@ -22,6 +22,8 @@ Importing this package registers every task on the Celery app (celery_app's
 
 from app.workers.tasks import (  # noqa: F401
     audit,
+    bounce,
+    campaign,
     directory_source,
     enrichment,
     export,

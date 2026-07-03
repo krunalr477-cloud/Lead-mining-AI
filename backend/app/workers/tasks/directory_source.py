@@ -14,6 +14,7 @@ import uuid
 from sqlalchemy import select
 
 from app.adapters.registry import get_registry
+from app.adapters.sources._provider_base import SourceUnavailableError
 from app.constants import SourceName, SourceRunStatus
 from app.models import DataSourceConfig, MiningJob
 from app.pipeline import stages
@@ -67,10 +68,17 @@ def run_directory_source(self, job_id: str, source_name: str) -> dict:
         ctx.open()
         index: dict = {}
         found = imported = 0
-        for discovered in drain_async_iter(adapter.discover(build_job_spec(job), ctx)):
-            found += 1
-            _, created = stages._upsert_company(session, job, discovered, index)
-            if created:
-                imported += 1
+        try:
+            for discovered in drain_async_iter(adapter.discover(build_job_spec(job), ctx)):
+                found += 1
+                _, created = stages._upsert_company(session, job, discovered, index)
+                if created:
+                    imported += 1
+        except SourceUnavailableError as exc:
+            # A REAL gated adapter with no licensed provider configured (or the
+            # LinkedIn stub) raises this at discover() time. Record a SKIPPED run
+            # and let the mining job continue (graceful failure, spec §8).
+            ctx.finalize(SourceRunStatus.SKIPPED, error=exc.detail.reason)
+            return {"skipped": name.value, "reason": exc.detail.reason}
         ctx.finalize(SourceRunStatus.COMPLETED, records_found=found, records_imported=imported)
         return {"source": name.value, "found": found, "imported": imported}

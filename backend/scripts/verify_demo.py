@@ -333,6 +333,78 @@ def check_campaign_metrics(session: Session) -> Check:
     return Check("§13 · demo campaign populated", ok, detail)
 
 
+def check_gated_source_skips_without_signoff(session: Session) -> Check:
+    """§8/AC23: a gated (AMBER/RED) source with no sign-off is skipped, not crashed.
+
+    ``resolve_source`` must return a ``SourceUnavailable`` (with a human reason)
+    rather than raising, so the mining job continues past a gated source that the
+    tenant has not signed off on.
+    """
+    from app.adapters.registry import AdapterRegistry
+    from app.constants import Posture, SourceName
+
+    registry = AdapterRegistry()
+    gated = [
+        name
+        for name in registry.source_names()
+        if registry.adapter_card(name).posture != Posture.GREEN
+    ]
+    if not gated:
+        return Check("§8 · gated source skips w/o signoff", False, "no gated sources found")
+
+    reasons: list[str] = []
+    for name in gated:
+        try:
+            resolved = registry.resolve_source(name, enabled=True, signed_off=False)
+        except Exception as exc:  # noqa: BLE001 — the whole point is it must NOT raise
+            return Check(
+                "§8 · gated source skips w/o signoff",
+                False,
+                f"{name} raised {type(exc).__name__}: {exc}",
+            )
+        if resolved.ok or resolved.unavailable is None:
+            return Check(
+                "§8 · gated source skips w/o signoff",
+                False,
+                f"{name} resolved to a runnable adapter without sign-off",
+            )
+        reasons.append(resolved.unavailable.reason)
+
+    # LinkedIn (RED) must be present among gated sources as an always-off stub.
+    has_linkedin = SourceName.LINKEDIN in gated
+    detail = f"{len(gated)} gated sources all skipped cleanly (linkedin_stub={has_linkedin})"
+    return Check("§8 · gated source skips w/o signoff", True, detail)
+
+
+def check_export_produces_file(session: Session) -> Check:
+    """§12/AC17: an export materializes DB-backed rows into a real non-empty file."""
+    import csv
+    import tempfile
+    from pathlib import Path
+
+    from app.constants import ExportScope
+    from app.services.exportsvc import SALES_READY_TAB, materialize_tabs
+
+    tabs = materialize_tabs(session, _tenant_id(), ExportScope.SALES_READY, _job_id())
+    tab = tabs.get(SALES_READY_TAB, {"header": [], "rows": []})
+    header, rows = tab["header"], tab["rows"]
+    if not header or not rows:
+        return Check("§12 · export produces a file", False, "no sales-ready rows to export")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "verify_export.csv"
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=header, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({c: row.get(c, "") for c in header})
+        size = path.stat().st_size
+        written = sum(1 for _ in path.read_text(encoding="utf-8").splitlines()) - 1
+    ok = size > 0 and written == len(rows)
+    detail = f"{written} rows · {len(header)} cols · {size} bytes CSV"
+    return Check("§12 · export produces a file", ok, detail)
+
+
 ALL_CHECKS = [
     check_pipeline_ran,
     check_companies_deduped,
@@ -342,6 +414,8 @@ ALL_CHECKS = [
     check_sheet_mirror,
     check_funnel_consistency,
     check_campaign_metrics,
+    check_gated_source_skips_without_signoff,
+    check_export_produces_file,
 ]
 
 

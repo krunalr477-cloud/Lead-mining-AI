@@ -64,23 +64,27 @@ app.conf.update(
     broker_connection_retry_on_startup=True,
     # Task modules are imported via the tasks package as they land.
     imports=("app.workers.tasks",),
-    # Real beat entries land in later phases. Placeholders (spec §4/§14):
+    # Beat schedule (spec §4/§13/§14).
     beat_schedule={
-        # "poll-bounces": {
-        #     "task": "app.workers.tasks.bounce_check.poll_all_send_accounts",
-        #     "schedule": settings.bounce_poll_interval_minutes * 60,
-        # },
+        "dispatch-due-campaign-messages": {
+            "task": "app.workers.tasks.campaign.dispatch_due_messages",
+            "schedule": 60,  # every 1 minute
+        },
+        "classify-deliveries": {
+            "task": "app.workers.tasks.campaign.classify_deliveries",
+            "schedule": 30 * 60,  # every 30 minutes
+        },
+        "poll-bounces": {
+            "task": "app.workers.tasks.bounce.poll_bounces",
+            "schedule": settings.bounce_poll_interval_minutes * 60,
+        },
+        "poll-replies": {
+            "task": "app.workers.tasks.bounce.poll_replies",
+            "schedule": settings.bounce_poll_interval_minutes * 60,
+        },
         # "retry-unknown-emails": {
         #     "task": "app.workers.tasks.validation.retry_unknown_batch",
         #     "schedule": 6 * 60 * 60,
-        # },
-        # "flush-sheet-sync-backlog": {
-        #     "task": "app.workers.tasks.spreadsheet_sync.flush_pending",
-        #     "schedule": 5 * 60,
-        # },
-        # "refresh-dashboard-metrics": {
-        #     "task": "app.workers.tasks.audit.refresh_dashboard_metrics",
-        #     "schedule": 10 * 60,
         # },
     },
 )

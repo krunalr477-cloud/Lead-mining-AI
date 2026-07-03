@@ -154,6 +154,30 @@ class ExportFormat(StrEnum):
     JSON = "json"
 
 
+class ExportScope(StrEnum):
+    """What a export materializes.
+
+    ``SALES_READY`` — the clean Sales_Ready_Leads projection (verified,
+    non-suppressed, non-tombstoned only — spec §12 / AC25).
+    ``RAW`` — the full mined dataset (all sheet tabs' DB-backed rows).
+    """
+
+    SALES_READY = "sales_ready"
+    RAW = "raw"
+
+
+class ExportTarget(StrEnum):
+    """Where the export is written.
+
+    ``FILE`` — a local CSV/XLSX/JSON download under ``exports/``.
+    ``GOOGLE_SHEETS`` — flushed to the tenant's spreadsheet via the sheet-sync
+    engine (no file; the spreadsheet id is recorded as the file_path).
+    """
+
+    FILE = "file"
+    GOOGLE_SHEETS = "google_sheets"
+
+
 class HiringSignalType(StrEnum):
     JOB_POSTING = "job_posting"
     CAREERS_PAGE = "careers_page"

@@ -1,0 +1,50 @@
+{
+  "search_metadata": {
+    "id": "demo-serpapi-google-jobs",
+    "status": "Success"
+  },
+  "search_parameters": {
+    "engine": "google_jobs",
+    "q": "Analytical Engines Ltd Ahmedabad",
+    "google_domain": "google.com"
+  },
+  "jobs_results": [
+    {
+      "title": "Senior Audit Associate",
+      "company_name": "Analytical Engines Ltd",
+      "location": "Ahmedabad, Gujarat, India",
+      "via": "via LinkedIn",
+      "description": "Analytical Engines Ltd is hiring a Senior Audit Associate to lead statutory audits for mid-market clients. You will manage engagements end to end, review workpapers, and mentor junior staff. Requires a CA qualification and 4+ years of audit experience.",
+      "detected_extensions": {
+        "posted_at": "3 days ago",
+        "schedule_type": "Full-time"
+      },
+      "apply_options": [
+        {
+          "title": "Apply on company site",
+          "link": "https://careers.analyticalengines.com/jobs/senior-audit-associate"
+        },
+        {
+          "title": "LinkedIn",
+          "link": "https://www.linkedin.com/jobs/view/senior-audit-associate-at-analytical-engines"
+        }
+      ]
+    },
+    {
+      "title": "Tax Manager",
+      "company_name": "Analytical Engines Ltd",
+      "location": "Ahmedabad, Gujarat",
+      "via": "via Indeed",
+      "description": "We are looking for a Tax Manager to own direct and indirect tax compliance across the group. This is a leadership role reporting to the Head of Finance.",
+      "detected_extensions": {
+        "posted_at": "12 hours ago"
+      },
+      "apply_options": [
+        {
+          "title": "Apply on Indeed",
+          "link": "https://in.indeed.com/viewjob?jk=tax-manager-analytical-engines"
+        }
+      ]
+    }
+  ]
+}

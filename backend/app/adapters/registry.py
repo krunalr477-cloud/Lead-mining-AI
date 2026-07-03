@@ -40,8 +40,14 @@ from app.adapters.mock.providers import (
     MockMillionVerifierAdapter,
     MockRocketReachAdapter,
 )
+from app.adapters.sources.clutch import ClutchAdapter
 from app.adapters.sources.company_websites import CompanyWebsitesAdapter
+from app.adapters.sources.facebook_signals import FacebookSignalsAdapter
 from app.adapters.sources.google_maps import GoogleMapsAdapter
+from app.adapters.sources.indeed import IndeedAdapter
+from app.adapters.sources.linkedin import LinkedInAdapter
+from app.adapters.sources.serp_jobs import SerpJobsAdapter
+from app.adapters.sources.yellow_pages import YellowPagesAdapter
 from app.adapters.validation.millionverifier import MillionVerifierAdapter
 from app.config import AdapterMode, get_settings
 from app.constants import Posture, SourceName
@@ -103,6 +109,48 @@ def _build_company_websites_real() -> SourceAdapter | None:
     return CompanyWebsitesAdapter()
 
 
+def _build_serp_jobs_real() -> SourceAdapter | None:
+    """Real SERP-jobs signal adapter iff SERP_API_KEY resolves; else None.
+
+    Gating (AMBER: enable + sign-off + enable_compliance_gated_sources) is decided
+    off the mock card upstream in resolve_source; this factory only picks the REAL
+    driver once the source is already permitted and a provider key is present."""
+    return SerpJobsAdapter() if get_settings().serp_api_key else None
+
+
+def _build_yellow_pages_real() -> SourceAdapter | None:
+    """Real Yellow Pages adapter — licensed-provider-only. Always builds; the
+    per-tenant provider connection is resolved from the DB at discover() time and
+    yields SourceUnavailable when none is configured (no first-party scraping)."""
+    return YellowPagesAdapter()
+
+
+def _build_clutch_real() -> SourceAdapter | None:
+    """Real Clutch adapter — licensed-provider-only (see _build_yellow_pages_real)."""
+    return ClutchAdapter()
+
+
+def _build_indeed_real() -> SourceAdapter | None:
+    """Real Indeed adapter — approved-provider-only hiring signals; always builds,
+    provider connection resolved per-tenant at run time (no scraping)."""
+    return IndeedAdapter()
+
+
+def _build_linkedin_real() -> SourceAdapter | None:
+    """Real LinkedIn slot — official-connector STUB. Always builds; every entry
+    point is unavailable until official access is configured (never scrapes)."""
+    return LinkedInAdapter()
+
+
+def _build_facebook_signals_real() -> SourceAdapter | None:
+    """Real compliance-gated Facebook signals slot. Always builds; the three
+    compliant modes (authorized Graph Page, SERP public-page discovery, SERP/careers
+    hiring fallback) each resolve their access per-tenant at run time and fail
+    GRACEFULLY (skip + continue) when no compliant access exists — never scrapes,
+    never logs in, never touches private profiles/groups/Messenger."""
+    return FacebookSignalsAdapter()
+
+
 # The real catalog: SourceName -> (real factory | None, mock instance).
 # The FIRST slot builds the REAL adapter (returning None when its required
 # credentials don't resolve); the SECOND slot is the always-available mock.
@@ -116,12 +164,15 @@ SOURCE_ADAPTERS: dict[
         _MOCK_SOURCES[SourceName.COMPANY_WEBSITES],
     ),
     SourceName.DIRECTORIES: (None, _MOCK_SOURCES[SourceName.DIRECTORIES]),
-    SourceName.YELLOW_PAGES: (None, _MOCK_SOURCES[SourceName.YELLOW_PAGES]),
-    SourceName.CLUTCH: (None, _MOCK_SOURCES[SourceName.CLUTCH]),
-    SourceName.FACEBOOK_SIGNALS: (None, _MOCK_SOURCES[SourceName.FACEBOOK_SIGNALS]),
-    SourceName.SERP_JOBS: (None, _MOCK_SOURCES[SourceName.SERP_JOBS]),
-    SourceName.INDEED: (None, _MOCK_SOURCES[SourceName.INDEED]),
-    SourceName.LINKEDIN: (None, _MOCK_SOURCES[SourceName.LINKEDIN]),
+    SourceName.YELLOW_PAGES: (_build_yellow_pages_real, _MOCK_SOURCES[SourceName.YELLOW_PAGES]),
+    SourceName.CLUTCH: (_build_clutch_real, _MOCK_SOURCES[SourceName.CLUTCH]),
+    SourceName.FACEBOOK_SIGNALS: (
+        _build_facebook_signals_real,
+        _MOCK_SOURCES[SourceName.FACEBOOK_SIGNALS],
+    ),
+    SourceName.SERP_JOBS: (_build_serp_jobs_real, _MOCK_SOURCES[SourceName.SERP_JOBS]),
+    SourceName.INDEED: (_build_indeed_real, _MOCK_SOURCES[SourceName.INDEED]),
+    SourceName.LINKEDIN: (_build_linkedin_real, _MOCK_SOURCES[SourceName.LINKEDIN]),
 }
 
 

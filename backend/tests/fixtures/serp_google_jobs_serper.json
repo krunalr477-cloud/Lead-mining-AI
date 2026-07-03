@@ -1,0 +1,27 @@
+{
+  "searchParameters": {
+    "q": "Analytical Engines Ltd Ahmedabad jobs",
+    "type": "search",
+    "engine": "google"
+  },
+  "jobs": [
+    {
+      "title": "Senior Audit Associate",
+      "company": "Analytical Engines Ltd",
+      "location": "Ahmedabad, Gujarat, India",
+      "via": "LinkedIn",
+      "description": "Analytical Engines Ltd is hiring a Senior Audit Associate to lead statutory audits for mid-market clients. You will manage engagements end to end, review workpapers, and mentor junior staff.",
+      "postedAt": "3 days ago",
+      "link": "https://www.linkedin.com/jobs/view/senior-audit-associate-at-analytical-engines"
+    },
+    {
+      "title": "Tax Manager",
+      "company": "Analytical Engines Ltd",
+      "location": "Ahmedabad, Gujarat",
+      "via": "Indeed",
+      "description": "We are looking for a Tax Manager to own direct and indirect tax compliance across the group.",
+      "postedAt": "12 hours ago",
+      "link": "https://in.indeed.com/viewjob?jk=tax-manager-analytical-engines"
+    }
+  ]
+}

@@ -123,6 +123,11 @@ async def dev_login(response: Response, session: SessionDep) -> MeResponse:
         )
         session.add(user)
         await session.flush()
+    else:
+        # Self-heal: the demo admin must always be an admin so the demo session can
+        # reach admin-only screens (Integrations, Users, Sources). Guards against the
+        # role drifting if it was ever edited (e.g. by an RBAC test).
+        user.role = Role.ADMIN
     await session.commit()
 
     _set_session_cookie(response, issue_token(user))

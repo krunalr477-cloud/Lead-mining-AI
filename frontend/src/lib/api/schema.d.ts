@@ -560,6 +560,19 @@ export interface IntegrationTestResult {
   latency_ms?: number | null;
 }
 
+/**
+ * Body for PUT /integrations/{provider}. The backend accepts a per-provider
+ * shape: a single {api_key} for most providers, {client_id, client_secret} for
+ * google_oauth, and {base_url, api_key} for approved_providers. All fields are
+ * optional here so one client type covers every card.
+ */
+export interface IntegrationSecretInput {
+  api_key?: string;
+  client_id?: string;
+  client_secret?: string;
+  base_url?: string;
+}
+
 /* ── Validation rules ────────────────────────────────────────────────── */
 
 export type CatchAllHandling = "review" | "reject" | "accept";

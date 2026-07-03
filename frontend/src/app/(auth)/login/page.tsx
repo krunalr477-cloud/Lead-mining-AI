@@ -1,14 +1,16 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { LogIn } from "lucide-react";
+import { HelpCircle, LogIn } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Button } from "@/components/ui/Button";
 import { MicroLabel } from "@/components/ui/MicroLabel";
 import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api/client";
+import { apiFetch } from "@/lib/api/hooks/http";
 import { queryKeys } from "@/lib/api/keys";
 
 export default function LoginPage() {
@@ -42,10 +44,25 @@ function LoginForm() {
     }
   };
 
-  const googleLogin = () => {
+  const googleLogin = async () => {
     setLoading("google");
-    // Backend owns the OAuth handshake; it redirects back with the cookie set.
-    window.location.href = "/api/v1/auth/google/start";
+    try {
+      // /auth/google/start is a POST returning {authorization_url}; a plain
+      // browser GET navigation 405s, so we POST first then hand off to the URL.
+      const data = await apiFetch<{ authorization_url: string }>(
+        "/auth/google/start",
+        { method: "POST", label: "Start Google sign-in" },
+      );
+      if (!data?.authorization_url) throw new Error("No authorization URL");
+      window.location.assign(data.authorization_url);
+      // Leave the spinner running through the redirect.
+    } catch {
+      toast.error(
+        "Google sign-in isn't set up yet",
+        "Add Google OAuth Client ID/Secret in Settings → Integrations, or use Dev Login. See Help for the 5-minute setup.",
+      );
+      setLoading(null);
+    }
   };
 
   return (
@@ -94,6 +111,14 @@ function LoginForm() {
             >
               Dev Login (Demo)
             </Button>
+
+            <Link
+              href="/help"
+              className="mt-1 inline-flex items-center justify-center gap-1.5 text-xs text-muted transition-colors hover:text-accent"
+            >
+              <HelpCircle className="size-3.5" />
+              Need help connecting? →
+            </Link>
           </div>
 
           <Panel.Section divided className="mt-4">

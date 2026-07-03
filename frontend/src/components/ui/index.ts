@@ -16,6 +16,12 @@ export { EmptyState } from "./EmptyState";
 export { ComplianceBadge, type CompliancePosture } from "./ComplianceBadge";
 export { ProgressBar } from "./ProgressBar";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
+export {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "./Accordion";
 export { Skeleton, SkeletonText } from "./Skeleton";
 export { ToastProvider, useToast } from "./Toast";
 export { ConfirmDialog } from "./ConfirmDialog";

@@ -51,7 +51,12 @@ export {
   useSignoffSource,
   type PatchSourceVars,
 } from "./useSources";
-export { useIntegrations, useTestIntegration } from "./useIntegrations";
+export {
+  useIntegrations,
+  useTestIntegration,
+  useSaveIntegration,
+  useDeleteIntegration,
+} from "./useIntegrations";
 export {
   useValidationRules,
   usePatchValidationRules,

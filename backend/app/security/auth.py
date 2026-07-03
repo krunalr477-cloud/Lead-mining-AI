@@ -84,13 +84,72 @@ class GoogleIdentity:
     granted_scopes: list[str] = field(default_factory=list)
 
 
+def _resolve_google_client() -> tuple[str, str] | None:
+    """Effective (client_id, client_secret) for the OAuth flow.
+
+    Env values win; when they are empty we fall back to a stored ``google_oauth``
+    client credential (set from Settings -> Integrations by a bootstrap admin) so
+    an operator can wire sign-in entirely from the UI without a redeploy. Returns
+    None when neither source yields both fields.
+    """
+    settings = get_settings()
+    if settings.google_client_id and settings.google_client_secret:
+        return settings.google_client_id, settings.google_client_secret
+    stored = _stored_google_client()
+    if stored is not None:
+        return stored
+    return None
+
+
+def _stored_google_client() -> tuple[str, str] | None:
+    """Read a stored google_oauth client credential via a short sync session.
+
+    The login flow is unauthenticated (no tenant yet) and the OAuth *client* is
+    an app-level secret, so we accept any active ``google_oauth`` row — an admin
+    configures it once for the deployment. Never raises: any error resolves to
+    None so the caller falls through to the actionable 503.
+    """
+    try:
+        from app.db import sync_session_factory
+        from app.models import IntegrationCredential
+        from app.security.crypto import decrypt_credential
+
+        with sync_session_factory() as session:
+            row = (
+                session.execute(
+                    select(IntegrationCredential)
+                    .where(
+                        IntegrationCredential.provider == "google_oauth",
+                        IntegrationCredential.status == "active",
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if row is None or not row.encrypted_secret_reference:
+                return None
+            fields = decrypt_credential(row.encrypted_secret_reference)
+            client_id = fields.get("client_id")
+            client_secret = fields.get("client_secret")
+            if client_id and client_secret:
+                return client_id, client_secret
+    except Exception:
+        return None
+    return None
+
+
 def _build_flow() -> Flow:
     settings = get_settings()
-    if not settings.google_client_id or not settings.google_client_secret:
+    resolved = _resolve_google_client()
+    if resolved is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google OAuth not configured",
+            detail=(
+                "Google sign-in isn't configured. Add a Google OAuth Client ID and "
+                "Secret under Settings -> Integrations (or set GOOGLE_CLIENT_ID / "
+                "GOOGLE_CLIENT_SECRET in .env), then retry. Use Dev Login meanwhile."
+            ),
         )
+    client_id, client_secret = resolved
     # Google reorders/expands granted scopes; don't let oauthlib treat that as
     # an error. In development the redirect URI is plain http://localhost.
     os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
@@ -99,8 +158,8 @@ def _build_flow() -> Flow:
     flow = Flow.from_client_config(
         {
             "web": {
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
                 "redirect_uris": [settings.google_redirect_uri],
@@ -128,7 +187,13 @@ def exchange_code(code: str) -> GoogleIdentity:
 
     Call from async routes via ``run_in_threadpool``.
     """
-    settings = get_settings()
+    resolved = _resolve_google_client()
+    if resolved is None:  # pragma: no cover - _build_flow raises first
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth not configured",
+        )
+    client_id, _client_secret = resolved
     flow = _build_flow()
     try:
         flow.fetch_token(code=code)
@@ -143,7 +208,7 @@ def exchange_code(code: str) -> GoogleIdentity:
         claims = google_id_token.verify_oauth2_token(
             credentials.id_token,
             google_requests.Request(),
-            settings.google_client_id,
+            client_id,
             clock_skew_in_seconds=10,
         )
     except ValueError as exc:

@@ -9,6 +9,7 @@ import {
   Download,
   Settings,
   History,
+  HelpCircle,
   type LucideProps,
 } from "lucide-react";
 
@@ -53,6 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Exports", href: "/exports", icon: Download },
       { label: "Settings", href: "/settings", icon: Settings, matches: ["/settings"] },
+      { label: "Help", href: "/help", icon: HelpCircle },
     ],
   },
 ];
@@ -73,6 +75,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   bounces: "Bounces",
   exports: "Exports",
   settings: "Settings",
+  help: "Info & Help",
   integrations: "Integrations",
   sources: "Data Sources",
   users: "Users & Roles",

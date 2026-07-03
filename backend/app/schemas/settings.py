@@ -25,6 +25,7 @@ __all__ = [
     "AuditEntryOut",
     "DataSourceOut",
     "IntegrationOut",
+    "IntegrationSecretInput",
     "IntegrationTestResult",
     "SettingsOut",
     "SettingsPatch",
@@ -108,6 +109,24 @@ class IntegrationTestResult(BaseModel):
     status: str
     message: str | None = None
     latency_ms: int | None = None
+
+
+class IntegrationSecretInput(BaseModel):
+    """Body for PUT /integrations/{provider} — a per-provider secret.
+
+    A single ``api_key`` covers most providers; ``google_oauth`` supplies
+    ``client_id`` + ``client_secret``; a licensed provider may add a ``base_url``.
+    All fields are optional on the wire so one shape serves every card; the
+    router validates the required subset per provider and 422s on a mismatch.
+    Secret fields are constrained in length but never echoed back.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    api_key: str | None = Field(default=None, max_length=4096)
+    client_id: str | None = Field(default=None, max_length=4096)
+    client_secret: str | None = Field(default=None, max_length=4096)
+    base_url: str | None = Field(default=None, max_length=2048)
 
 
 # --------------------------------------------------------------------------- #

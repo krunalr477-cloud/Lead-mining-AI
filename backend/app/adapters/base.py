@@ -217,7 +217,5 @@ class LLMScorerAdapter(ABC):
     required_credentials: list[str] = []
 
     @abstractmethod
-    async def score(
-        self, emails: list[str], ctx: SourceRunContext
-    ) -> list[tuple[str, float, str]]:
+    async def score(self, emails: list[str], ctx: SourceRunContext) -> list[tuple[str, float, str]]:
         """Return [(email, score 0..1, reason)] for a batch."""

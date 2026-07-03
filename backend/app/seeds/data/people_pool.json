@@ -1,0 +1,173 @@
+{
+  "surnames": [
+    "Shah",
+    "Patel",
+    "Mehta",
+    "Desai",
+    "Trivedi",
+    "Joshi",
+    "Parikh",
+    "Modi",
+    "Vyas",
+    "Bhatt",
+    "Dave",
+    "Thakkar",
+    "Amin",
+    "Gandhi",
+    "Kothari",
+    "Sheth",
+    "Nanavati",
+    "Munshi",
+    "Zaveri",
+    "Doshi",
+    "Panchal",
+    "Rana",
+    "Chokshi",
+    "Vora",
+    "Jhaveri",
+    "Pandya",
+    "Raval",
+    "Soni",
+    "Contractor",
+    "Majmudar"
+  ],
+  "first_names_m": [
+    "Rajesh",
+    "Amit",
+    "Nikhil",
+    "Bhavesh",
+    "Kalpesh",
+    "Jignesh",
+    "Mihir",
+    "Paresh",
+    "Chirag",
+    "Hardik",
+    "Ketan",
+    "Sanjay",
+    "Manish",
+    "Tushar",
+    "Viral",
+    "Dhaval",
+    "Bhargav",
+    "Rushabh",
+    "Kunal",
+    "Parth",
+    "Harsh",
+    "Vishal",
+    "Nirav",
+    "Ronak",
+    "Devang",
+    "Ashish",
+    "Maulik",
+    "Hemant"
+  ],
+  "first_names_f": [
+    "Priya",
+    "Nisha",
+    "Rina",
+    "Kruti",
+    "Foram",
+    "Hetal",
+    "Bhoomi",
+    "Payal",
+    "Krupa",
+    "Shivani",
+    "Riddhi",
+    "Dhara",
+    "Avni",
+    "Jinal",
+    "Khushbu",
+    "Pooja",
+    "Manisha",
+    "Sneha",
+    "Trupti",
+    "Vaidehi"
+  ],
+  "designations": [
+    [
+      "Founder",
+      "founder",
+      "executive",
+      "Founder"
+    ],
+    [
+      "Managing Partner",
+      "partner",
+      "executive",
+      "Partner"
+    ],
+    [
+      "Partner",
+      "partner",
+      "senior",
+      "Partner"
+    ],
+    [
+      "CEO",
+      "ceo",
+      "executive",
+      "Executive"
+    ],
+    [
+      "Managing Director",
+      "director",
+      "executive",
+      "Director"
+    ],
+    [
+      "Director",
+      "director",
+      "senior",
+      "Director"
+    ],
+    [
+      "Principal",
+      "principal",
+      "senior",
+      "Principal"
+    ],
+    [
+      "Senior Partner",
+      "partner",
+      "executive",
+      "Partner"
+    ],
+    [
+      "Audit Partner",
+      "partner",
+      "senior",
+      "Audit"
+    ],
+    [
+      "Tax Partner",
+      "partner",
+      "senior",
+      "Tax"
+    ]
+  ],
+  "role_inboxes": [
+    "info",
+    "contact",
+    "admin",
+    "office",
+    "ca"
+  ],
+  "services_pool": [
+    "Audit",
+    "Tax Filing",
+    "GST",
+    "Statutory Audit",
+    "Internal Audit",
+    "Income Tax",
+    "ROC Filing",
+    "Bookkeeping",
+    "Company Incorporation",
+    "TDS Return",
+    "Financial Advisory",
+    "Assurance",
+    "Payroll",
+    "Transfer Pricing",
+    "FEMA",
+    "Business Valuation"
+  ]
+}

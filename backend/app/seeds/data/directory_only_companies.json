@@ -1,0 +1,1179 @@
+[
+  {
+    "idx": 0,
+    "name": "M/s Vora Vyas Consultants",
+    "domain": "msvoravyasconsultants.com",
+    "website": "https://www.msvoravyasconsultants.com",
+    "phone": "+91 79 3153 2640",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382424",
+    "locality": "Chandkheda",
+    "latitude": 23.185189,
+    "longitude": 72.526463,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Payroll",
+      "Business Valuation",
+      "GST",
+      "FEMA"
+    ]
+  },
+  {
+    "idx": 1,
+    "name": "Shah LLP",
+    "domain": "shahllp.co.in",
+    "website": "https://www.shahllp.co.in",
+    "phone": "+91 79 2087 9463",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380059",
+    "locality": "Thaltej",
+    "latitude": 23.078233,
+    "longitude": 72.698351,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Audit",
+      "ROC Filing",
+      "Internal Audit"
+    ]
+  },
+  {
+    "idx": 2,
+    "name": "Zaveri Advisors",
+    "domain": "zaveriadvisors.com",
+    "website": "https://www.zaveriadvisors.com",
+    "phone": "+91 79 2886 4804",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380058",
+    "locality": "Bopal",
+    "latitude": 23.07637,
+    "longitude": 72.495561,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Bookkeeping",
+      "Tax Filing",
+      "Income Tax",
+      "Internal Audit"
+    ]
+  },
+  {
+    "idx": 3,
+    "name": "Panchal & Co. LLP",
+    "domain": "panchalcollp.com",
+    "website": "https://www.panchalcollp.com",
+    "phone": "+91 79 2318 2655",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380013",
+    "locality": "Vadaj",
+    "latitude": 23.041469,
+    "longitude": 72.697259,
+    "industry": "Chartered Accountants",
+    "services": [
+      "GST"
+    ]
+  },
+  {
+    "idx": 4,
+    "name": "Mehta Pandya LLP",
+    "domain": "mehtapandyallp.in",
+    "website": "https://www.mehtapandyallp.in",
+    "phone": "+91 79 3866 7629",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 22.997706,
+    "longitude": 72.377547,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Internal Audit",
+      "Company Incorporation",
+      "GST"
+    ]
+  },
+  {
+    "idx": 5,
+    "name": "Munshi Pandya LLP",
+    "domain": "munshipandyallp.com",
+    "website": "https://www.munshipandyallp.com",
+    "phone": "+91 79 3762 5649",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380006",
+    "locality": "Ambawadi",
+    "latitude": 23.039978,
+    "longitude": 72.702712,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Bookkeeping",
+      "Internal Audit"
+    ]
+  },
+  {
+    "idx": 6,
+    "name": "Majmudar Thakkar Associates",
+    "domain": "majmudarthakkarassocia.com",
+    "website": "https://www.majmudarthakkarassocia.com",
+    "phone": "+91 81634 17504",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380007",
+    "locality": "Paldi",
+    "latitude": 23.192821,
+    "longitude": 72.559083,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Audit",
+      "Internal Audit",
+      "Income Tax",
+      "Bookkeeping"
+    ]
+  },
+  {
+    "idx": 7,
+    "name": "M/s Zaveri & Associates",
+    "domain": "mszaveriassociates.co.in",
+    "website": "https://www.mszaveriassociates.co.in",
+    "phone": "+91 77913 74452",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 23.115247,
+    "longitude": 72.493148,
+    "industry": "Chartered Accountants",
+    "services": [
+      "GST"
+    ]
+  },
+  {
+    "idx": 8,
+    "name": "Bhatt & Co. LLP",
+    "domain": "bhattcollp.com",
+    "website": "https://www.bhattcollp.com",
+    "phone": "+91 79557 85021",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380051",
+    "locality": "Vejalpur",
+    "latitude": 22.899734,
+    "longitude": 72.590226,
+    "industry": "Chartered Accountants",
+    "services": [
+      "GST",
+      "Transfer Pricing",
+      "Bookkeeping"
+    ]
+  },
+  {
+    "idx": 9,
+    "name": "Doshi & Associates",
+    "domain": "doshiassociates.com",
+    "website": "https://www.doshiassociates.com",
+    "phone": "+91 79 2137 5089",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382424",
+    "locality": "Chandkheda",
+    "latitude": 23.16587,
+    "longitude": 72.473836,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Internal Audit",
+      "Statutory Audit",
+      "GST"
+    ]
+  },
+  {
+    "idx": 10,
+    "name": "Pandya & Partners",
+    "domain": "pandyapartners.co.in",
+    "website": "https://www.pandyapartners.co.in",
+    "phone": "+91 79 3756 2363",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Satellite",
+    "latitude": 22.931879,
+    "longitude": 72.620363,
+    "industry": "Chartered Accountants",
+    "services": [
+      "TDS Return"
+    ]
+  },
+  {
+    "idx": 11,
+    "name": "Parikh LLP",
+    "domain": "parikhllp.com",
+    "website": "https://www.parikhllp.com",
+    "phone": "+91 92063 26238",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Prahlad Nagar",
+    "latitude": 23.000593,
+    "longitude": 72.55919,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Income Tax",
+      "Company Incorporation",
+      "Audit",
+      "Bookkeeping"
+    ]
+  },
+  {
+    "idx": 12,
+    "name": "Desai Kothari Advisors",
+    "domain": "desaikothariadvisors.com",
+    "website": "https://www.desaikothariadvisors.com",
+    "phone": "+91 90641 38366",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Ramdev Nagar",
+    "latitude": 22.966636,
+    "longitude": 72.501279,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Company Incorporation",
+      "Financial Advisory",
+      "ROC Filing",
+      "Audit"
+    ]
+  },
+  {
+    "idx": 13,
+    "name": "M/s Mehta & Co.",
+    "domain": "msmehtaco.in",
+    "website": "https://www.msmehtaco.in",
+    "phone": "+91 71065 45515",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382424",
+    "locality": "Chandkheda",
+    "latitude": 23.136508,
+    "longitude": 72.536192,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Business Valuation",
+      "Financial Advisory"
+    ]
+  },
+  {
+    "idx": 14,
+    "name": "M/s Vora Soni & Partners",
+    "domain": "msvorasonipartners.com",
+    "website": "https://www.msvorasonipartners.com",
+    "phone": "+91 79 4291 1911",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380007",
+    "locality": "Paldi",
+    "latitude": 22.990615,
+    "longitude": 72.722569,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Financial Advisory",
+      "Business Valuation"
+    ]
+  },
+  {
+    "idx": 15,
+    "name": "Chokshi & Associates",
+    "domain": "chokshiassociates.co.in",
+    "website": "https://www.chokshiassociates.co.in",
+    "phone": "+91 87327 49162",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382330",
+    "locality": "Naroda",
+    "latitude": 23.000906,
+    "longitude": 72.584738,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Statutory Audit",
+      "Financial Advisory",
+      "Assurance"
+    ]
+  },
+  {
+    "idx": 16,
+    "name": "Contractor Bhatt Associates",
+    "domain": "contractorbhattassocia.co.in",
+    "website": "https://www.contractorbhattassocia.co.in",
+    "phone": "+91 79 4990 5122",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382445",
+    "locality": "Vatva",
+    "latitude": 22.975581,
+    "longitude": 72.648337,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Tax Filing",
+      "FEMA"
+    ]
+  },
+  {
+    "idx": 17,
+    "name": "Mehta & Partners",
+    "domain": "mehtapartners.com",
+    "website": "https://www.mehtapartners.com",
+    "phone": "+91 79 2616 7143",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380059",
+    "locality": "Thaltej",
+    "latitude": 23.067696,
+    "longitude": 72.647603,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Income Tax",
+      "Tax Filing",
+      "Internal Audit",
+      "FEMA"
+    ]
+  },
+  {
+    "idx": 18,
+    "name": "Dave Desai Consultants",
+    "domain": "davedesaiconsultants.com",
+    "website": "https://www.davedesaiconsultants.com",
+    "phone": "+91 79 2051 7928",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380009",
+    "locality": "Navrangpura",
+    "latitude": 22.981369,
+    "longitude": 72.668882,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Audit"
+    ]
+  },
+  {
+    "idx": 19,
+    "name": "Nanavati Vora & Company",
+    "domain": "nanavativoracompany.co.in",
+    "website": "https://www.nanavativoracompany.co.in",
+    "phone": "+91 86537 77817",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382443",
+    "locality": "Isanpur",
+    "latitude": 22.982653,
+    "longitude": 72.517285,
+    "industry": "Chartered Accountants",
+    "services": [
+      "TDS Return"
+    ]
+  },
+  {
+    "idx": 20,
+    "name": "Zaveri Pandya Associates",
+    "domain": "zaveripandyaassociates.com",
+    "website": "https://www.zaveripandyaassociates.com",
+    "phone": "+91 75839 23332",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Prahlad Nagar",
+    "latitude": 23.171211,
+    "longitude": 72.56917,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Income Tax"
+    ]
+  },
+  {
+    "idx": 21,
+    "name": "M/s Jhaveri Advisors",
+    "domain": "msjhaveriadvisors.co.in",
+    "website": "https://www.msjhaveriadvisors.co.in",
+    "phone": "+91 87336 56578",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382445",
+    "locality": "Vatva",
+    "latitude": 23.00889,
+    "longitude": 72.448589,
+    "industry": "Chartered Accountants",
+    "services": [
+      "ROC Filing",
+      "GST",
+      "Bookkeeping",
+      "Financial Advisory"
+    ]
+  },
+  {
+    "idx": 22,
+    "name": "Vora Vyas Consultants",
+    "domain": "voravyasconsultants.com",
+    "website": "https://www.voravyasconsultants.com",
+    "phone": "+91 79 4810 7790",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382443",
+    "locality": "Isanpur",
+    "latitude": 22.940906,
+    "longitude": 72.509507,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Tax Filing",
+      "Business Valuation",
+      "Statutory Audit",
+      "FEMA"
+    ]
+  },
+  {
+    "idx": 23,
+    "name": "Soni & Partners",
+    "domain": "sonipartners.com",
+    "website": "https://www.sonipartners.com",
+    "phone": "+91 88807 32312",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380009",
+    "locality": "Ashram Road",
+    "latitude": 22.969598,
+    "longitude": 72.60203,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Income Tax",
+      "ROC Filing",
+      "GST"
+    ]
+  },
+  {
+    "idx": 24,
+    "name": "M/s Jhaveri Raval Advisors",
+    "domain": "msjhaveriravaladvisors.com",
+    "website": "https://www.msjhaveriravaladvisors.com",
+    "phone": "+91 89259 21842",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 22.881221,
+    "longitude": 72.500228,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Business Valuation",
+      "FEMA",
+      "Bookkeeping",
+      "Financial Advisory"
+    ]
+  },
+  {
+    "idx": 25,
+    "name": "Pandya Associates",
+    "domain": "pandyaassociates.co.in",
+    "website": "https://www.pandyaassociates.co.in",
+    "phone": "+91 79 2997 5030",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380013",
+    "locality": "Naranpura",
+    "latitude": 22.923147,
+    "longitude": 72.731676,
+    "industry": "Chartered Accountants",
+    "services": [
+      "ROC Filing",
+      "TDS Return"
+    ]
+  },
+  {
+    "idx": 26,
+    "name": "Zaveri LLP",
+    "domain": "zaverillp.com",
+    "website": "https://www.zaverillp.com",
+    "phone": "+91 86381 23820",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380059",
+    "locality": "Thaltej",
+    "latitude": 22.939766,
+    "longitude": 72.417987,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Tax Filing",
+      "Bookkeeping",
+      "FEMA"
+    ]
+  },
+  {
+    "idx": 27,
+    "name": "Vyas & Partners",
+    "domain": "vyaspartners.com",
+    "website": "https://www.vyaspartners.com",
+    "phone": "+91 79 4083 3341",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 23.089268,
+    "longitude": 72.502815,
+    "industry": "Chartered Accountants",
+    "services": [
+      "ROC Filing"
+    ]
+  },
+  {
+    "idx": 28,
+    "name": "Soni Advisors",
+    "domain": "soniadvisors.com",
+    "website": "https://www.soniadvisors.com",
+    "phone": "+91 79 3739 3259",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Prahlad Nagar",
+    "latitude": 23.059694,
+    "longitude": 72.581978,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Audit"
+    ]
+  },
+  {
+    "idx": 29,
+    "name": "M/s Trivedi Advisors",
+    "domain": "mstrivediadvisors.in",
+    "website": "https://www.mstrivediadvisors.in",
+    "phone": "+91 79 3118 7810",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380009",
+    "locality": "Ashram Road",
+    "latitude": 23.033073,
+    "longitude": 72.640981,
+    "industry": "Chartered Accountants",
+    "services": [
+      "GST"
+    ]
+  },
+  {
+    "idx": 30,
+    "name": "Raval & Company",
+    "domain": "ravalcompany.com",
+    "website": "https://www.ravalcompany.com",
+    "phone": "+91 73125 21970",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380006",
+    "locality": "Ambawadi",
+    "latitude": 23.018862,
+    "longitude": 72.699715,
+    "industry": "Chartered Accountants",
+    "services": [
+      "FEMA",
+      "GST",
+      "Bookkeeping",
+      "Assurance"
+    ]
+  },
+  {
+    "idx": 31,
+    "name": "Modi & Company",
+    "domain": "modicompany.com",
+    "website": "https://www.modicompany.com",
+    "phone": "+91 74985 50637",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380013",
+    "locality": "Vadaj",
+    "latitude": 23.093711,
+    "longitude": 72.45912,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Bookkeeping",
+      "Internal Audit",
+      "Financial Advisory",
+      "Payroll"
+    ]
+  },
+  {
+    "idx": 32,
+    "name": "Thakkar & Partners",
+    "domain": "thakkarpartners.com",
+    "website": "https://www.thakkarpartners.com",
+    "phone": "+91 76088 49024",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Prahlad Nagar",
+    "latitude": 23.090209,
+    "longitude": 72.646944,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Company Incorporation"
+    ]
+  },
+  {
+    "idx": 33,
+    "name": "Patel Raval & Co.",
+    "domain": "patelravalco.com",
+    "website": "https://www.patelravalco.com",
+    "phone": "+91 85826 78402",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Prahlad Nagar",
+    "latitude": 22.919444,
+    "longitude": 72.535643,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Bookkeeping",
+      "Assurance",
+      "Audit",
+      "Transfer Pricing"
+    ]
+  },
+  {
+    "idx": 34,
+    "name": "M/s Modi Associates",
+    "domain": "msmodiassociates.in",
+    "website": "https://www.msmodiassociates.in",
+    "phone": "+91 79 4970 7396",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380013",
+    "locality": "Naranpura",
+    "latitude": 23.017037,
+    "longitude": 72.665819,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Income Tax"
+    ]
+  },
+  {
+    "idx": 35,
+    "name": "Pandya Thakkar & Co. LLP",
+    "domain": "pandyathakkarcollp.com",
+    "website": "https://www.pandyathakkarcollp.com",
+    "phone": "+91 79 4814 1611",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382424",
+    "locality": "Chandkheda",
+    "latitude": 22.862505,
+    "longitude": 72.510473,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Financial Advisory",
+      "Tax Filing",
+      "Income Tax"
+    ]
+  },
+  {
+    "idx": 36,
+    "name": "M/s Chokshi Associates",
+    "domain": "mschokshiassociates.com",
+    "website": "https://www.mschokshiassociates.com",
+    "phone": "+91 79 2590 6665",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380009",
+    "locality": "Ashram Road",
+    "latitude": 22.961073,
+    "longitude": 72.639717,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Assurance",
+      "Company Incorporation"
+    ]
+  },
+  {
+    "idx": 37,
+    "name": "M/s Raval & Co. LLP",
+    "domain": "msravalcollp.com",
+    "website": "https://www.msravalcollp.com",
+    "phone": "+91 79 2215 5999",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382445",
+    "locality": "Vatva",
+    "latitude": 23.14738,
+    "longitude": 72.623688,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Tax Filing",
+      "ROC Filing",
+      "Statutory Audit",
+      "Bookkeeping"
+    ]
+  },
+  {
+    "idx": 38,
+    "name": "Thakkar & Company",
+    "domain": "thakkarcompany.co.in",
+    "website": "https://www.thakkarcompany.co.in",
+    "phone": "+91 93490 57878",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382424",
+    "locality": "Chandkheda",
+    "latitude": 23.091993,
+    "longitude": 72.580597,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Tax Filing",
+      "Financial Advisory",
+      "Internal Audit",
+      "GST"
+    ]
+  },
+  {
+    "idx": 39,
+    "name": "Contractor Amin Associates",
+    "domain": "contractoraminassociat.com",
+    "website": "https://www.contractoraminassociat.com",
+    "phone": "+91 83238 55500",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380013",
+    "locality": "Naranpura",
+    "latitude": 23.050324,
+    "longitude": 72.608524,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Company Incorporation",
+      "GST",
+      "FEMA"
+    ]
+  },
+  {
+    "idx": 40,
+    "name": "Rana & Company",
+    "domain": "ranacompany.com",
+    "website": "https://www.ranacompany.com",
+    "phone": "+91 79 4568 4997",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380013",
+    "locality": "Naranpura",
+    "latitude": 22.983439,
+    "longitude": 72.525832,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Internal Audit",
+      "Tax Filing"
+    ]
+  },
+  {
+    "idx": 41,
+    "name": "Bhatt Munshi & Co.",
+    "domain": "bhattmunshico.com",
+    "website": "https://www.bhattmunshico.com",
+    "phone": "+91 92264 70693",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380058",
+    "locality": "Bopal",
+    "latitude": 23.104496,
+    "longitude": 72.502233,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Assurance",
+      "Internal Audit",
+      "Bookkeeping"
+    ]
+  },
+  {
+    "idx": 42,
+    "name": "M/s Shah Kothari & Co.",
+    "domain": "msshahkotharico.co.in",
+    "website": "https://www.msshahkotharico.co.in",
+    "phone": "+91 79 4230 1530",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380007",
+    "locality": "Vasna",
+    "latitude": 23.099692,
+    "longitude": 72.548533,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Tax Filing",
+      "Financial Advisory",
+      "Assurance"
+    ]
+  },
+  {
+    "idx": 43,
+    "name": "Joshi Associates",
+    "domain": "joshiassociates.com",
+    "website": "https://www.joshiassociates.com",
+    "phone": "+91 85337 47608",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Prahlad Nagar",
+    "latitude": 22.8948,
+    "longitude": 72.540153,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Transfer Pricing",
+      "Audit",
+      "TDS Return"
+    ]
+  },
+  {
+    "idx": 44,
+    "name": "M/s Pandya Consultants",
+    "domain": "mspandyaconsultants.com",
+    "website": "https://www.mspandyaconsultants.com",
+    "phone": "+91 82663 15812",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Vastrapur",
+    "latitude": 22.937533,
+    "longitude": 72.636424,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Financial Advisory"
+    ]
+  },
+  {
+    "idx": 45,
+    "name": "Majmudar & Associates",
+    "domain": "majmudarassociates.in",
+    "website": "https://www.majmudarassociates.in",
+    "phone": "+91 79 4226 8957",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 23.065461,
+    "longitude": 72.547391,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Transfer Pricing",
+      "Bookkeeping",
+      "TDS Return"
+    ]
+  },
+  {
+    "idx": 46,
+    "name": "Soni Trivedi Consultants",
+    "domain": "sonitrivediconsultants.com",
+    "website": "https://www.sonitrivediconsultants.com",
+    "phone": "+91 76209 76191",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380007",
+    "locality": "Vasna",
+    "latitude": 22.900688,
+    "longitude": 72.694011,
+    "industry": "Chartered Accountants",
+    "services": [
+      "TDS Return",
+      "FEMA"
+    ]
+  },
+  {
+    "idx": 47,
+    "name": "Vyas Consultants",
+    "domain": "vyasconsultants.com",
+    "website": "https://www.vyasconsultants.com",
+    "phone": "+91 86741 35364",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380007",
+    "locality": "Vasna",
+    "latitude": 23.153914,
+    "longitude": 72.642826,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Tax Filing"
+    ]
+  },
+  {
+    "idx": 48,
+    "name": "Gandhi Thakkar & Co.",
+    "domain": "gandhithakkarco.co.in",
+    "website": "https://www.gandhithakkarco.co.in",
+    "phone": "+91 77867 43314",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 22.917849,
+    "longitude": 72.424268,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Transfer Pricing"
+    ]
+  },
+  {
+    "idx": 49,
+    "name": "Doshi Advisors",
+    "domain": "doshiadvisors.in",
+    "website": "https://www.doshiadvisors.in",
+    "phone": "+91 77620 85072",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380009",
+    "locality": "Ashram Road",
+    "latitude": 22.917808,
+    "longitude": 72.688369,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Assurance",
+      "Audit",
+      "ROC Filing",
+      "Income Tax"
+    ]
+  },
+  {
+    "idx": 50,
+    "name": "Panchal Doshi & Partners",
+    "domain": "panchaldoshipartners.co.in",
+    "website": "https://www.panchaldoshipartners.co.in",
+    "phone": "+91 79 4349 9331",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380007",
+    "locality": "Paldi",
+    "latitude": 23.077948,
+    "longitude": 72.748277,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Audit",
+      "Internal Audit",
+      "GST",
+      "ROC Filing"
+    ]
+  },
+  {
+    "idx": 51,
+    "name": "Contractor Soni & Partners",
+    "domain": "contractorsonipartners.in",
+    "website": "https://www.contractorsonipartners.in",
+    "phone": "+91 79 3442 5909",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 22.871854,
+    "longitude": 72.518295,
+    "industry": "Chartered Accountants",
+    "services": [
+      "ROC Filing",
+      "GST",
+      "Assurance"
+    ]
+  },
+  {
+    "idx": 52,
+    "name": "Doshi Panchal Consultants",
+    "domain": "doshipanchalconsultant.com",
+    "website": "https://www.doshipanchalconsultant.com",
+    "phone": "+91 79 4601 7129",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382424",
+    "locality": "Chandkheda",
+    "latitude": 23.065273,
+    "longitude": 72.421675,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Statutory Audit"
+    ]
+  },
+  {
+    "idx": 53,
+    "name": "Shah Doshi Advisors",
+    "domain": "shahdoshiadvisors.co.in",
+    "website": "https://www.shahdoshiadvisors.co.in",
+    "phone": "+91 79 4425 4820",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380013",
+    "locality": "Naranpura",
+    "latitude": 23.145145,
+    "longitude": 72.694159,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Business Valuation",
+      "Internal Audit",
+      "Financial Advisory"
+    ]
+  },
+  {
+    "idx": 54,
+    "name": "Joshi & Partners",
+    "domain": "joshipartners.com",
+    "website": "https://www.joshipartners.com",
+    "phone": "+91 77453 77780",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382350",
+    "locality": "Nikol",
+    "latitude": 23.142322,
+    "longitude": 72.639229,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Transfer Pricing",
+      "Company Incorporation",
+      "Income Tax",
+      "Bookkeeping"
+    ]
+  },
+  {
+    "idx": 55,
+    "name": "Mehta Kothari & Partners",
+    "domain": "mehtakotharipartners.com",
+    "website": "https://www.mehtakotharipartners.com",
+    "phone": "+91 79 4608 9412",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380009",
+    "locality": "Navrangpura",
+    "latitude": 23.08967,
+    "longitude": 72.661999,
+    "industry": "Chartered Accountants",
+    "services": [
+      "ROC Filing",
+      "Business Valuation",
+      "GST",
+      "Bookkeeping"
+    ]
+  },
+  {
+    "idx": 56,
+    "name": "Chokshi Bhatt & Company",
+    "domain": "chokshibhattcompany.in",
+    "website": "https://www.chokshibhattcompany.in",
+    "phone": "+91 75199 93870",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "382424",
+    "locality": "Chandkheda",
+    "latitude": 23.143652,
+    "longitude": 72.612648,
+    "industry": "Chartered Accountants",
+    "services": [
+      "Business Valuation",
+      "FEMA",
+      "Company Incorporation"
+    ]
+  },
+  {
+    "idx": 57,
+    "name": "Amin Consultants",
+    "domain": "aminconsultants.com",
+    "website": "https://www.aminconsultants.com",
+    "phone": "+91 75394 36633",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Ramdev Nagar",
+    "latitude": 22.990026,
+    "longitude": 72.593188,
+    "industry": "Chartered Accountants",
+    "services": [
+      "GST",
+      "Bookkeeping",
+      "Internal Audit",
+      "Business Valuation"
+    ]
+  },
+  {
+    "idx": 58,
+    "name": "Vyas Trivedi Consultants",
+    "domain": "vyastrivediconsultants.co.in",
+    "website": "https://www.vyastrivediconsultants.co.in",
+    "phone": "+91 79 4031 8494",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380015",
+    "locality": "Ramdev Nagar",
+    "latitude": 23.14947,
+    "longitude": 72.547605,
+    "industry": "Chartered Accountants",
+    "services": [
+      "ROC Filing"
+    ]
+  },
+  {
+    "idx": 59,
+    "name": "Patel & Company",
+    "domain": "patelcompany.com",
+    "website": "https://www.patelcompany.com",
+    "phone": "+91 96749 17512",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "postal_code": "380051",
+    "locality": "Vejalpur",
+    "latitude": 23.086778,
+    "longitude": 72.436687,
+    "industry": "Chartered Accountants",
+    "services": [
+      "GST"
+    ]
+  }
+]

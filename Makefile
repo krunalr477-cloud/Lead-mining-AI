@@ -46,7 +46,7 @@ test-integration:
 	cd backend && uv run pytest tests/integration -q
 
 lint:
-	cd backend && uv run ruff check app tests && uv run ruff format --check app tests
+	cd backend && uv run ruff check app tests scripts && uv run ruff format --check app tests scripts
 
 smoke-keys:
 	bash scripts/smoke_keys.sh

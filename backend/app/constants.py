@@ -161,8 +161,16 @@ class HiringSignalType(StrEnum):
 
 # Default role-inbox keywords (spec §11 stage 3) — tenant-configurable.
 DEFAULT_ROLE_KEYWORDS = [
-    "info", "support", "sales", "admin", "careers", "jobs",
-    "hr", "marketing", "contact", "hello",
+    "info",
+    "support",
+    "sales",
+    "admin",
+    "careers",
+    "jobs",
+    "hr",
+    "marketing",
+    "contact",
+    "hello",
 ]
 
 # The 12 Celery queues (spec §4).
@@ -183,6 +191,16 @@ QUEUES = [
 
 # Template variables available in campaign templates (spec §13).
 TEMPLATE_VARIABLES = [
-    "FirstName", "LastName", "FullName", "Company", "Industry", "City",
-    "State", "Country", "Services", "Designation", "Website", "HiringSignal",
+    "FirstName",
+    "LastName",
+    "FullName",
+    "Company",
+    "Industry",
+    "City",
+    "State",
+    "Country",
+    "Services",
+    "Designation",
+    "Website",
+    "HiringSignal",
 ]

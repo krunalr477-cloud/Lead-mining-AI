@@ -38,8 +38,7 @@ class Settings(BaseSettings):
     google_maps_api_key: str = ""
     google_sheets_scopes: str = "https://www.googleapis.com/auth/spreadsheets"
     gmail_scopes: str = (
-        "https://www.googleapis.com/auth/gmail.send "
-        "https://www.googleapis.com/auth/gmail.readonly"
+        "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly"
     )
 
     # Providers

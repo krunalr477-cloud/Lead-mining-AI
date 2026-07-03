@@ -47,7 +47,9 @@ class TimestampMixin:
 settings = get_settings()
 
 async_engine = create_async_engine(settings.async_database_url, pool_pre_ping=True)
-async_session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+async_session_factory = async_sessionmaker(
+    async_engine, class_=AsyncSession, expire_on_commit=False
+)
 
 sync_engine = create_engine(settings.sync_database_url, pool_pre_ping=True)
 sync_session_factory = sessionmaker(sync_engine, expire_on_commit=False)

@@ -45,6 +45,7 @@ import httpx
 
 from app.adapters.base import DiscoveredCompany, JobSpec, SourceAdapter
 from app.adapters.google.geocode import geocode
+from app.adapters.sources.firm_taxonomy import expand_company_type
 from app.constants import AccessMethod, Posture, SourceName
 
 if TYPE_CHECKING:
@@ -125,10 +126,16 @@ def _parse_address_components(components: list[dict[str, Any]]) -> dict[str, str
 
 
 def _text_query(job: JobSpec) -> str:
-    """Build the free-text query from company type + services + city."""
+    """Build the free-text query from company type + services + city.
+
+    The company type is expanded through the firm taxonomy so industry shorthand
+    (CPA, KPO, BPO, IT, MSP, ...) becomes a phrase Places can actually match,
+    while unknown types pass through so any firm is still targetable.
+    """
     parts: list[str] = []
-    if job.company_type:
-        parts.append(job.company_type)
+    expanded = expand_company_type(job.company_type)
+    if expanded:
+        parts.append(expanded)
     if job.services:
         parts.append(" ".join(job.services[:3]))
     where = job.city or job.state or job.country

@@ -51,15 +51,61 @@ const HAS_MAPS_KEY = !!process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY;
 
 /* ── Presets (spec §7) ─────────────────────────────────────────────────── */
 
+// Global firm taxonomy — mirrors backend app/adapters/sources/firm_taxonomy.py
+// (served by GET /taxonomy/company-types). The field stays a free-text combobox,
+// so anything not listed is still targetable; the backend expands industry
+// shorthand (CPA, KPO, BPO, IT, MSP, ITES ...) into search-friendly queries.
 const COMPANY_TYPES = [
+  // Accounting & Finance
   "CA Firm",
+  "CPA Firm",
+  "Accounting Firm",
+  "Audit Firm",
+  "Tax Consultancy",
+  "Bookkeeping Firm",
+  "Financial Advisory",
+  "Wealth Management",
+  // IT & Technology
+  "IT Company",
+  "IT Services",
   "Software Company",
+  "SaaS Company",
+  "Cloud Services",
+  "Cybersecurity Firm",
+  "AI / Data Analytics",
+  "Managed Service Provider (MSP)",
+  // Outsourcing
+  "BPO",
+  "KPO",
+  "LPO",
+  "RPO",
+  "ITES",
+  "Call Center",
+  "Shared Services",
+  // Consulting & Staffing
+  "Management Consulting",
+  "Strategy Consulting",
+  "HR Consulting",
+  "Recruitment Agency",
+  "Staffing Firm",
+  "Business Consulting",
+  // Professional Services
   "Law Firm",
-  "Hospital",
+  "Legal Services",
+  "Engineering Firm",
+  "Architecture Firm",
+  // Marketing & Agencies
+  "Marketing Agency",
+  "Digital Agency",
+  "Advertising Agency",
+  "PR Firm",
+  // Industry
   "Manufacturer",
+  "Hospital",
+  "Healthcare",
   "Hotel",
-  "Consulting Company",
-  "Agency",
+  "Real Estate",
+  "Logistics",
 ].map((v) => ({ value: v, label: v }));
 
 const SERVICE_SUGGESTIONS = [

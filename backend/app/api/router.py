@@ -19,6 +19,7 @@ from app.api import (
     sheets,
     sources,
     suppressions,
+    taxonomy,
     templates,
     users,
     validation,
@@ -44,3 +45,4 @@ router.include_router(settings.router)
 router.include_router(sources.router)
 router.include_router(integrations.router)
 router.include_router(audit.router)
+router.include_router(taxonomy.router)

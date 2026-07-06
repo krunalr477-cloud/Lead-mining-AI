@@ -41,6 +41,13 @@ class Settings(BaseSettings):
         "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly"
     )
 
+    # Microsoft (Outlook / Entra ID) — sign-in only
+    microsoft_client_id: str = ""
+    microsoft_client_secret: str = ""
+    microsoft_tenant: str = "common"  # "common" | "organizations" | a directory (tenant) id
+    microsoft_redirect_uri: str = "http://localhost:8000/api/v1/auth/microsoft/callback"
+    microsoft_scopes: str = "openid email profile offline_access User.Read"
+
     # Providers
     rocketreach_api_key: str = ""
     millionverifier_api_key: str = ""

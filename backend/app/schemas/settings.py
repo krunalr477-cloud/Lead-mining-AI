@@ -24,6 +24,10 @@ from pydantic import BaseModel, ConfigDict, Field
 __all__ = [
     "AuditEntryOut",
     "DataSourceOut",
+    "EnvKeyOut",
+    "EnvKeyReveal",
+    "EnvKeyRevealRequest",
+    "EnvKeyUpdate",
     "IntegrationOut",
     "IntegrationSecretInput",
     "IntegrationTestResult",
@@ -167,3 +171,47 @@ class AuditEntryOut(BaseModel):
     before: Any | None = None
     after: Any | None = None
     created_at: datetime
+
+
+# --------------------------------------------------------------------------- #
+# /settings/env-keys — the .env single-source-of-truth key manager
+# --------------------------------------------------------------------------- #
+
+
+class EnvKeyOut(BaseModel):
+    """One managed ``.env`` key as rendered on the Settings screen.
+
+    Secrets are never returned in the clear here: ``value`` is populated only for
+    non-secret config; secrets expose ``masked`` (``****last4``) when set and are
+    only revealed through the dedicated, audited reveal endpoint.
+    """
+
+    key: str
+    label: str
+    group: str  # "Google" | "Microsoft" | "Providers" | "Runtime"
+    is_secret: bool
+    is_set: bool
+    masked: str | None = None  # ****last4, for set secrets
+    value: str | None = None  # plaintext for non-secret config only
+    source: str  # "env" | "unset"
+
+
+class EnvKeyUpdate(BaseModel):
+    """Body for PUT /settings/env-keys — a map of managed KEY -> new value."""
+
+    model_config = ConfigDict(str_strip_whitespace=False)
+
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class EnvKeyRevealRequest(BaseModel):
+    """Body for POST /settings/env-keys/reveal — the single key to reveal."""
+
+    key: str
+
+
+class EnvKeyReveal(BaseModel):
+    """The full current value of one managed key (admin-only, audited)."""
+
+    key: str
+    value: str

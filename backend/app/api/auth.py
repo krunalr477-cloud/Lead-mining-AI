@@ -1,6 +1,6 @@
-"""Auth endpoints: Google OAuth, session cookie, /me, dev login."""
+"""Auth endpoints: Google + Microsoft OAuth, session cookie, /me, dev login."""
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -17,12 +17,21 @@ from app.deps import CurrentUser, SessionDep
 from app.models import Tenant, User
 from app.schemas.auth import MeResponse, TenantOut, UserOut, provider_modes
 from app.security.auth import (
+    GOOGLE_PROVIDER,
+    MICROSOFT_PROVIDER,
+    OAUTH_STATE_COOKIE_NAME,
     SESSION_COOKIE_NAME,
+    STATE_TTL,
     TOKEN_TTL,
     build_authorization_url,
+    build_ms_authorization_url,
     exchange_code,
+    exchange_ms_code,
+    issue_oauth_state,
     issue_token,
     upsert_google_user,
+    upsert_microsoft_user,
+    verify_oauth_state,
 )
 
 router = APIRouter(tags=["auth"])
@@ -41,6 +50,24 @@ def _set_session_cookie(response: Response, token: str) -> None:
     )
 
 
+def _set_state_cookie(response: Response, state: str) -> None:
+    """Persist the signed OAuth state so the callback can verify it (CSRF)."""
+    settings = get_settings()
+    response.set_cookie(
+        OAUTH_STATE_COOKIE_NAME,
+        state,
+        max_age=int(STATE_TTL.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=settings.environment != "development",
+        path="/",
+    )
+
+
+def _clear_state_cookie(response: Response) -> None:
+    response.delete_cookie(OAUTH_STATE_COOKIE_NAME, path="/")
+
+
 def _me_response(user: User, tenant: Tenant) -> MeResponse:
     settings = get_settings()
     return MeResponse(
@@ -52,15 +79,21 @@ def _me_response(user: User, tenant: Tenant) -> MeResponse:
 
 
 @router.post("/auth/google/start")
-async def google_start() -> dict[str, str]:
+async def google_start(response: Response) -> dict[str, str]:
     """Begin the Google OAuth flow. 503 when OAuth is not configured."""
-    return {"authorization_url": build_authorization_url()}
+    state = issue_oauth_state(GOOGLE_PROVIDER)
+    url = build_authorization_url(state=state)  # 503 here if unconfigured
+    _set_state_cookie(response, state)
+    return {"authorization_url": url}
 
 
 @router.get("/auth/google/callback", include_in_schema=False)
-async def google_callback_browser(code: str, session: SessionDep) -> RedirectResponse:
+async def google_callback_browser(
+    code: str, state: str, request: Request, session: SessionDep
+) -> RedirectResponse:
     """Browser leg of the OAuth flow: set the session cookie and go to the app."""
     settings = get_settings()
+    verify_oauth_state(state, request.cookies.get(OAUTH_STATE_COOKIE_NAME), GOOGLE_PROVIDER)
     identity = await run_in_threadpool(exchange_code, code)
     user = await upsert_google_user(session, identity)
     response = RedirectResponse(
@@ -68,6 +101,7 @@ async def google_callback_browser(code: str, session: SessionDep) -> RedirectRes
         status_code=status.HTTP_302_FOUND,
     )
     _set_session_cookie(response, issue_token(user))
+    _clear_state_cookie(response)
     return response
 
 
@@ -80,6 +114,47 @@ async def google_callback_api(body: GoogleCallbackBody, session: SessionDep) -> 
     """API leg of the OAuth flow: exchange the code for a bearer token."""
     identity = await run_in_threadpool(exchange_code, body.code)
     user = await upsert_google_user(session, identity)
+    return {"token": issue_token(user)}
+
+
+@router.post("/auth/microsoft/start")
+async def microsoft_start(response: Response) -> dict[str, str]:
+    """Begin the Microsoft (Entra ID) OAuth flow. 503 when not configured."""
+    state = issue_oauth_state(MICROSOFT_PROVIDER)
+    url = build_ms_authorization_url(state=state)  # 503 here if unconfigured
+    _set_state_cookie(response, state)
+    return {"authorization_url": url}
+
+
+@router.get("/auth/microsoft/callback", include_in_schema=False)
+async def microsoft_callback_browser(
+    code: str, state: str, request: Request, session: SessionDep
+) -> RedirectResponse:
+    """Browser leg of the Microsoft flow: set the session cookie and go to the app."""
+    settings = get_settings()
+    verify_oauth_state(state, request.cookies.get(OAUTH_STATE_COOKIE_NAME), MICROSOFT_PROVIDER)
+    identity = await exchange_ms_code(code)
+    user = await upsert_microsoft_user(session, identity)
+    response = RedirectResponse(
+        f"{settings.frontend_url.rstrip('/')}/dashboard",
+        status_code=status.HTTP_302_FOUND,
+    )
+    _set_session_cookie(response, issue_token(user))
+    _clear_state_cookie(response)
+    return response
+
+
+class MicrosoftCallbackBody(BaseModel):
+    code: str
+
+
+@router.post("/auth/microsoft/callback")
+async def microsoft_callback_api(
+    body: MicrosoftCallbackBody, session: SessionDep
+) -> dict[str, str]:
+    """API leg of the Microsoft flow: exchange the code for a bearer token."""
+    identity = await exchange_ms_code(body.code)
+    user = await upsert_microsoft_user(session, identity)
     return {"token": issue_token(user)}
 
 

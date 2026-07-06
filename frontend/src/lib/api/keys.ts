@@ -94,6 +94,7 @@ export const queryKeys = {
     all: () => ["settings"] as const,
     sources: () => ["settings", "sources"] as const,
     integrations: () => ["settings", "integrations"] as const,
+    envKeys: () => ["settings", "env-keys"] as const,
     validationRules: () => ["settings", "validation-rules"] as const,
     users: () => ["settings", "users"] as const,
     audit: (filters?: Record<string, unknown>) =>

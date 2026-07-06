@@ -573,6 +573,33 @@ export interface IntegrationSecretInput {
   base_url?: string;
 }
 
+/* ── Environment keys (.env) ─────────────────────────────────────────── */
+
+/**
+ * A single `.env` key row from GET /settings/env-keys. Secret rows carry only a
+ * masked hint in `value`; the full value is fetched on demand via
+ * POST /settings/env-keys/reveal. Non-secret rows carry plaintext in `value`.
+ */
+export interface EnvKey {
+  key: string;
+  label: string;
+  group: string;
+  is_secret: boolean;
+  is_set: boolean;
+  /** Masked hint for secrets (e.g. "****ab12"), plaintext for non-secrets. */
+  masked?: string | null;
+  /** Plaintext for non-secret rows; masked/omitted for secrets. */
+  value?: string | null;
+  /** Where the value came from, e.g. "env" or "default". */
+  source?: string | null;
+}
+
+/** Response of POST /settings/env-keys/reveal — the full plaintext secret. */
+export interface EnvKeyReveal {
+  key: string;
+  value: string;
+}
+
 /* ── Validation rules ────────────────────────────────────────────────── */
 
 export type CatchAllHandling = "review" | "reject" | "accept";

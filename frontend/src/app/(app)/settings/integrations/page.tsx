@@ -10,6 +10,11 @@ import {
   KeyRound,
   Info,
   Trash2,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  Pencil,
 } from "lucide-react";
 import { Panel, PanelHeader, PanelSection } from "@/components/ui/Panel";
 import { MicroLabel } from "@/components/ui/MicroLabel";
@@ -23,11 +28,15 @@ import {
   useTestIntegration,
   useSaveIntegration,
   useDeleteIntegration,
+  useEnvKeys,
+  useRevealEnvKey,
+  useUpdateEnvKeys,
 } from "@/lib/api/hooks";
 import { useDemoMode } from "@/lib/demo";
 import { useSession } from "@/lib/auth/session";
 import { formatRelative } from "@/lib/format";
 import type {
+  EnvKey,
   Integration,
   IntegrationSecretInput,
   ProviderKey,
@@ -47,10 +56,17 @@ interface ProviderDef {
   providerKey?: ProviderKey;
   note: string;
   kind: CredKind;
+  /**
+   * OAuth providers configured through the `.env` section above rather than
+   * per-tenant stored secrets. The card shows a jump-to-env link instead of
+   * Client ID/Secret inputs.
+   */
+  envManaged?: boolean;
 }
 
 const PROVIDERS: ProviderDef[] = [
   { provider: "google_oauth", label: "Google OAuth", kind: "oauth", note: "Sign-in and Sheets/Gmail authorization for the tenant." },
+  { provider: "microsoft", label: "Microsoft OAuth", kind: "oauth", envManaged: true, note: "Microsoft / Entra ID sign-in. Configure via the Microsoft .env keys above." },
   { provider: "google_maps", label: "Google Maps", providerKey: "google_maps", kind: "api_key", note: "Places, geocoding, and company discovery." },
   { provider: "sheets", label: "Google Sheets", providerKey: "sheets", kind: "api_key", note: "Sales-facing system of record mirror." },
   { provider: "gmail", label: "Gmail", providerKey: "gmail", kind: "api_key", note: "Outreach sending and bounce/reply monitoring." },
@@ -187,7 +203,29 @@ function ProviderCard({
         </div>
       </div>
 
-      {canManage ? (
+      {card.envManaged ? (
+        // OAuth configured through the .env section above — no stored secret to
+        // paste here, just a jump to where the keys live plus Help.
+        <div className="flex items-center gap-2">
+          <Button
+            asChild
+            size="sm"
+            variant="secondary"
+            className="flex-1"
+          >
+            <a href="#env-keys">
+              <KeyRound className="size-4" />
+              Manage .env keys
+            </a>
+          </Button>
+          <Button asChild size="sm" variant="ghost">
+            <Link href="/help">
+              <Info className="size-4" />
+              Help
+            </Link>
+          </Button>
+        </div>
+      ) : canManage ? (
         <>
           {open ? (
             <div className="flex flex-col gap-2 rounded-[8px] border border-border bg-[var(--color-surface-1)] p-3">
@@ -319,6 +357,283 @@ function ProviderCard({
   );
 }
 
+/* ── Environment keys (.env) ─────────────────────────────────────────── */
+
+/** Preferred display order for the env-key groups. Unknown groups sort last. */
+const ENV_GROUP_ORDER = ["Google", "Microsoft", "Providers", "Runtime"];
+
+function groupOrder(group: string): number {
+  const i = ENV_GROUP_ORDER.indexOf(group);
+  return i === -1 ? ENV_GROUP_ORDER.length : i;
+}
+
+function EnvKeyRow({
+  row,
+  onReveal,
+  onSave,
+  canManage,
+}: {
+  row: EnvKey;
+  onReveal: (key: string) => Promise<string>;
+  onSave: (key: string, value: string) => Promise<void>;
+  canManage: boolean;
+}) {
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // The value shown when not revealed: masked hint for secrets, plaintext else.
+  const display = row.is_secret
+    ? row.masked || (row.is_set ? "•••• hidden" : "—")
+    : row.value || (row.is_set ? "(set)" : "—");
+
+  async function handleReveal() {
+    if (revealed !== null) {
+      setRevealed(null);
+      return;
+    }
+    setRevealing(true);
+    try {
+      const value = await onReveal(row.key);
+      setRevealed(value);
+    } finally {
+      setRevealing(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (revealed == null) return;
+    try {
+      await navigator.clipboard.writeText(revealed);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — no-op */
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(row.key, draft);
+      setEditing(false);
+      setDraft("");
+      setRevealed(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-b border-border py-3 last:border-b-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-ink">{row.label}</p>
+          <p className="font-mono text-[11px] text-muted">{row.key}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {row.source ? (
+            <span className="font-mono text-[10px] uppercase tracking-wide text-muted">
+              {row.source}
+            </span>
+          ) : null}
+          <StatusChip
+            status={row.is_set ? "live" : "muted"}
+            label={row.is_set ? "Set" : "Unset"}
+          />
+        </div>
+      </div>
+
+      {editing ? (
+        <div className="flex flex-col gap-2 rounded-[8px] border border-border bg-[var(--color-surface-1)] p-3 sm:flex-row sm:items-center">
+          <Input
+            type={row.is_secret ? "password" : "text"}
+            autoComplete="off"
+            className="flex-1"
+            placeholder={`New value for ${row.key}`}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={saving || !draft.trim()}
+              onClick={handleSave}
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              Save
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => {
+                setEditing(false);
+                setDraft("");
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="min-w-0 flex-1 truncate rounded-[6px] bg-[var(--color-surface-1)] px-2 py-1 font-mono text-xs text-ink">
+            {revealed !== null ? revealed : display}
+          </code>
+          {row.is_secret && row.is_set ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={revealing}
+              onClick={handleReveal}
+              aria-label={revealed !== null ? "Hide value" : "Reveal value"}
+              title={revealed !== null ? "Hide value" : "Reveal value"}
+            >
+              {revealing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : revealed !== null ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+            </Button>
+          ) : null}
+          {revealed !== null ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleCopy}
+              aria-label="Copy value"
+              title="Copy value"
+            >
+              {copied ? (
+                <Check className="size-4 text-accent" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+            </Button>
+          ) : null}
+          {canManage ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setDraft("");
+                setEditing(true);
+              }}
+            >
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EnvKeysSection({ canManage }: { canManage: boolean }) {
+  const { data: envKeys = [], isLoading } = useEnvKeys();
+  const reveal = useRevealEnvKey();
+  const update = useUpdateEnvKeys();
+  const { toast } = useToast();
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, EnvKey[]>();
+    for (const row of envKeys) {
+      const g = row.group || "Other";
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(row);
+    }
+    return Array.from(map.entries()).sort(
+      (a, b) => groupOrder(a[0]) - groupOrder(b[0]),
+    );
+  }, [envKeys]);
+
+  async function handleReveal(key: string): Promise<string> {
+    try {
+      const res = await reveal.mutateAsync(key);
+      return res.value;
+    } catch (e) {
+      toast({ tone: "error", title: "Reveal failed", description: (e as Error).message });
+      throw e;
+    }
+  }
+
+  async function handleSave(key: string, value: string): Promise<void> {
+    try {
+      await update.mutateAsync({ [key]: value });
+      toast({
+        tone: "success",
+        title: "Saved to .env",
+        description: `${key} updated. Restart workers for running jobs to pick it up.`,
+      });
+    } catch (e) {
+      toast({ tone: "error", title: "Save failed", description: (e as Error).message });
+      throw e;
+    }
+  }
+
+  // Nothing to show and not loading → the backend route isn't live yet; hide the
+  // whole section rather than render an empty shell.
+  if (!isLoading && envKeys.length === 0) return null;
+
+  return (
+    <div
+      id="env-keys"
+      className="mb-6 scroll-mt-24 rounded-[12px] border border-border bg-panel-strong p-4"
+    >
+      <div className="mb-3 flex flex-col gap-1">
+        <MicroLabel className="text-accent/70">Environment keys (.env)</MicroLabel>
+        <p className="text-xs leading-relaxed text-muted">
+          Read from and written to the repo{" "}
+          <code className="font-mono text-[11px]">.env</code> file — the primary
+          path for Google, Microsoft, and provider credentials. Changes to keys
+          used by running mining jobs apply after a worker restart.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {grouped.map(([group, rows]) => (
+            <div key={group}>
+              <MicroLabel>{group}</MicroLabel>
+              <div className="mt-1">
+                {rows.map((row) => (
+                  <EnvKeyRow
+                    key={row.key}
+                    row={row}
+                    onReveal={handleReveal}
+                    onSave={handleSave}
+                    canManage={canManage}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!canManage ? (
+        <p className="mt-3 flex items-center gap-1 text-xs text-muted">
+          <XCircle className="size-3.5" /> Admin required to reveal or edit .env keys.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function IntegrationsSettingsPage() {
   const { data: integrations = [], isLoading } = useIntegrations();
   const { providers, demoMode } = useDemoMode();
@@ -429,6 +744,18 @@ export default function IntegrationsSettingsPage() {
             </p>
           </div>
         ) : null}
+
+        {/* Primary path: keys live in .env. Per-tenant cards below still work. */}
+        <EnvKeysSection canManage={canManage} />
+
+        <div className="mb-2 flex flex-col gap-0.5">
+          <MicroLabel>Per-tenant connections</MicroLabel>
+          <p className="text-xs leading-relaxed text-muted">
+            Optional per-tenant overrides stored server-side (encrypted). The
+            <code className="mx-1 font-mono text-[11px]">.env</code>
+            keys above are the primary path.
+          </p>
+        </div>
 
         {isLoading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

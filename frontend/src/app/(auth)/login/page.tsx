@@ -27,7 +27,9 @@ function LoginForm() {
   const params = useSearchParams();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [loading, setLoading] = useState<"google" | "dev" | null>(null);
+  const [loading, setLoading] = useState<"google" | "microsoft" | "dev" | null>(
+    null,
+  );
 
   const next = params.get("next") || "/dashboard";
 
@@ -65,6 +67,27 @@ function LoginForm() {
     }
   };
 
+  const microsoftLogin = async () => {
+    setLoading("microsoft");
+    try {
+      // Mirrors the Google flow: POST returns {authorization_url}, then we hand
+      // the browser off to Microsoft's consent screen.
+      const data = await apiFetch<{ authorization_url: string }>(
+        "/auth/microsoft/start",
+        { method: "POST", label: "Start Microsoft sign-in" },
+      );
+      if (!data?.authorization_url) throw new Error("No authorization URL");
+      window.location.assign(data.authorization_url);
+      // Leave the spinner running through the redirect.
+    } catch {
+      toast.error(
+        "Microsoft sign-in isn't set up yet",
+        "Add Microsoft Client ID/Secret in Settings → Integrations, or use Dev Login. See Help.",
+      );
+      setLoading(null);
+    }
+  };
+
   return (
     <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -96,6 +119,17 @@ function LoginForm() {
               Continue with Google
             </Button>
 
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full"
+              loading={loading === "microsoft"}
+              onClick={microsoftLogin}
+            >
+              <MicrosoftGlyph className="size-4" />
+              Continue with Microsoft
+            </Button>
+
             <div className="flex items-center gap-3 py-1">
               <span className="h-px flex-1 bg-border" />
               <MicroLabel>or</MicroLabel>
@@ -123,12 +157,32 @@ function LoginForm() {
 
           <Panel.Section divided className="mt-4">
             <p className="text-xs leading-relaxed text-muted">
-              Dev login issues a demo session with mock adapters. Real Google OAuth requires the
-              backend to be configured with Workspace credentials.
+              Dev login issues a demo session with mock adapters. Real Google or Microsoft
+              sign-in requires the backend to be configured with the matching OAuth credentials.
             </p>
           </Panel.Section>
         </Panel>
       </div>
     </div>
+  );
+}
+
+/**
+ * Microsoft brand glyph — lucide has no brand icons, so we render the classic
+ * four-square mark inline. `currentColor` keeps it in step with button text.
+ */
+function MicrosoftGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="9" height="9" rx="0.5" />
+      <rect x="13" y="2" width="9" height="9" rx="0.5" />
+      <rect x="2" y="13" width="9" height="9" rx="0.5" />
+      <rect x="13" y="13" width="9" height="9" rx="0.5" />
+    </svg>
   );
 }

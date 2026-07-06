@@ -15,9 +15,10 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
+from starlette.concurrency import run_in_threadpool
 
 from app.constants import DEFAULT_ROLE_KEYWORDS
 from app.deps import SessionDep, TenantId, require
@@ -29,10 +30,22 @@ from app.models import (
     default_validation_rules,
 )
 from app.schemas.settings import (
+    EnvKeyOut,
+    EnvKeyReveal,
+    EnvKeyRevealRequest,
+    EnvKeyUpdate,
     SettingsOut,
     SettingsPatch,
     ValidationRulesOut,
     ValidationRulesPatch,
+)
+from app.security.crypto import mask_secret
+from app.services.envfile import (
+    MANAGED_ENV_KEYS,
+    UnmanagedKeyError,
+    managed_key,
+    read_env,
+    write_env_values,
 )
 
 router = APIRouter(tags=["settings"])
@@ -184,3 +197,128 @@ async def patch_validation_rules(
     await session.commit()
     await session.refresh(rs)
     return _rules_to_out(rs.rules or {})
+
+
+# --------------------------------------------------------------------------- #
+# /settings/env-keys — the repo .env single-source-of-truth key manager
+#
+# The whole surface is ADMIN-ONLY (WriteActor / "settings:manage"): the list
+# exposes non-secret config in the clear and the set-status of every secret,
+# reveal returns a plaintext secret, and update rewrites the repo .env. A
+# non-admin (e.g. sales_manager) gets 403 on every route here.
+#
+# Secrets NEVER leak in the list response: a set secret shows only ``****last4``
+# in ``masked`` with ``value=None``; the plaintext is only ever returned by the
+# dedicated, audited reveal endpoint. Non-secret config carries plaintext in
+# ``value`` for direct display/edit.
+# --------------------------------------------------------------------------- #
+
+
+def _env_rows(values: dict[str, str]) -> list[EnvKeyOut]:
+    """Render the managed allowlist as list rows from a KEY->value map.
+
+    Order follows :data:`MANAGED_ENV_KEYS`. Secrets are masked (never plaintext);
+    non-secrets carry their value in the clear. A blank/absent value is ``unset``.
+    """
+    rows: list[EnvKeyOut] = []
+    for mk in MANAGED_ENV_KEYS:
+        raw = values.get(mk.key, "")
+        is_set = raw != ""
+        rows.append(
+            EnvKeyOut(
+                key=mk.key,
+                label=mk.label,
+                group=mk.group,
+                is_secret=mk.is_secret,
+                is_set=is_set,
+                masked=mask_secret(raw) if (mk.is_secret and is_set) else None,
+                value=(raw if not mk.is_secret else None),
+                source="env" if is_set else "unset",
+            )
+        )
+    return rows
+
+
+@router.get("/settings/env-keys", response_model=list[EnvKeyOut])
+async def list_env_keys(_actor: WriteActor) -> list[EnvKeyOut]:
+    """Managed ``.env`` keys, grouped, with secrets masked (admin-only)."""
+    values = await run_in_threadpool(read_env)
+    return _env_rows(values)
+
+
+@router.put("/settings/env-keys", response_model=list[EnvKeyOut])
+async def update_env_keys(
+    body: EnvKeyUpdate,
+    actor: WriteActor,
+    tenant_id: TenantId,
+    session: SessionDep,
+) -> list[EnvKeyOut]:
+    """Write one or more managed ``.env`` values, hot-reload, return the fresh list.
+
+    Rejects any key outside the managed allowlist (400). Audited: records which
+    keys changed (never their values) so the ledger doesn't leak secrets.
+    """
+    try:
+        # Validate every incoming key is managed before touching the file.
+        for key in body.values:
+            managed_key(key)
+    except UnmanagedKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    try:
+        refreshed = await run_in_threadpool(write_env_values, body.values)
+    except UnmanagedKeyError as exc:  # pragma: no cover - guarded above
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if body.values:
+        session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor_user_id=actor.id,
+                action="env_keys.updated",
+                entity_type="env_file",
+                entity_id=".env",
+                # Record only WHICH keys changed — never their values.
+                before_json=None,
+                after_json={"keys": sorted(body.values)},
+            )
+        )
+        await session.commit()
+
+    return _env_rows(refreshed)
+
+
+@router.post("/settings/env-keys/reveal", response_model=EnvKeyReveal)
+async def reveal_env_key(
+    body: EnvKeyRevealRequest,
+    actor: WriteActor,
+    tenant_id: TenantId,
+    session: SessionDep,
+) -> EnvKeyReveal:
+    """Return the full plaintext of one managed key (admin-only, audited).
+
+    Rejects unmanaged keys (400). The value may be an empty string when unset.
+    The reveal itself is audited (which key, never the value).
+    """
+    try:
+        managed_key(body.key)
+    except UnmanagedKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    values = await run_in_threadpool(read_env)
+    value = values.get(body.key, "")
+
+    session.add(
+        AuditLog(
+            tenant_id=tenant_id,
+            actor_user_id=actor.id,
+            action="env_keys.revealed",
+            entity_type="env_file",
+            entity_id=body.key,
+            before_json=None,
+            after_json=None,
+        )
+    )
+    await session.commit()
+
+    return EnvKeyReveal(key=body.key, value=value)

@@ -474,6 +474,21 @@ class GoogleSheetsClient(SheetsClient):
         )
         self._index_sheets(meta.get("sheets", []))
 
+    def _conditional_rule_count(self, sheet_id: int) -> int:
+        """Count existing conditional-format rules on a sheet, so they can be
+        cleared before re-adding (rules aren't idempotent — re-running formatting
+        would otherwise stack duplicate rules on every sync)."""
+        meta = self._execute(
+            self.service.spreadsheets().get(
+                spreadsheetId=self.spreadsheet_id,
+                fields="sheets(properties.sheetId,conditionalFormats)",
+            )
+        )
+        for sheet in meta.get("sheets", []):
+            if sheet.get("properties", {}).get("sheetId") == sheet_id:
+                return len(sheet.get("conditionalFormats", []))
+        return 0
+
     def _index_sheets(self, sheets: Sequence[dict]) -> None:
         for sheet in sheets:
             props = sheet.get("properties", {})
@@ -526,6 +541,25 @@ class GoogleSheetsClient(SheetsClient):
                 )
             )
 
+        # Delete Google's auto-created "Sheet1" once real spec tabs exist, so the
+        # workbook opens on a data tab instead of an empty default. Guard on there
+        # being at least one other sheet (a spreadsheet must keep one).
+        spec_names = {name for name, _ in tabs}
+        default = self._sheet_meta.get("Sheet1")
+        if (
+            "Sheet1" not in spec_names
+            and default
+            and "sheet_id" in default
+            and len(self._sheet_meta) > 1
+        ):
+            self._execute(
+                self.service.spreadsheets().batchUpdate(
+                    spreadsheetId=self.spreadsheet_id,
+                    body={"requests": [{"deleteSheet": {"sheetId": default["sheet_id"]}}]},
+                )
+            )
+            self._sheet_meta.pop("Sheet1", None)
+
     # ---- reads ----------------------------------------------------------- #
 
     def read_key_column(self, tab: str, key_column: str) -> dict[str, int]:
@@ -562,7 +596,6 @@ class GoogleSheetsClient(SheetsClient):
         self._sheet_meta.setdefault(tab, {})["header"] = header
         if not rows:
             return []
-        self._rate_limit()
         values = [[_cell(row.get(col, "")) for col in header] for row in rows]
         last_col = _column_letter(len(header) - 1) if header else "A"
         resp = self._execute(
@@ -605,7 +638,6 @@ class GoogleSheetsClient(SheetsClient):
                 data.append({"range": a1, "values": [row_values]})
         if not data:
             return
-        self._rate_limit()
         self._execute(
             self.service.spreadsheets()
             .values()
@@ -637,7 +669,6 @@ class GoogleSheetsClient(SheetsClient):
                     }
                 }
             )
-        self._rate_limit()
         self._execute(
             self.service.spreadsheets().batchUpdate(
                 spreadsheetId=self.spreadsheet_id,
@@ -717,6 +748,16 @@ class GoogleSheetsClient(SheetsClient):
                 }
             )
 
+        # Clear any conditional-format rules already on this sheet before re-adding,
+        # so repeated syncs don't stack duplicate rules without bound. Deleting
+        # index 0 N times drains all N (each delete shifts the rest down).
+        if formatting.status_columns:
+            existing_rules = self._conditional_rule_count(sheet_id)
+            for _ in range(existing_rules):
+                requests.append(
+                    {"deleteConditionalFormatRule": {"sheetId": sheet_id, "index": 0}}
+                )
+
         # One conditional-format rule per (status column x color bucket).
         for column in formatting.status_columns:
             if column not in formatting_header:
@@ -751,7 +792,6 @@ class GoogleSheetsClient(SheetsClient):
                     )
 
         if requests:
-            self._rate_limit()
             self._execute(
                 self.service.spreadsheets().batchUpdate(
                     spreadsheetId=self.spreadsheet_id,
@@ -808,6 +848,11 @@ class GoogleSheetsClient(SheetsClient):
             reraise=True,
         )
         def _do() -> Any:
+            # Gate every call (reads, creates, ensure_tabs, formatting) through the
+            # token bucket — not just writes — so bursts of small reads/creates
+            # can't trip Google's per-minute quota. Retries re-acquire, spacing
+            # out backoff attempts too.
+            self._rate_limit()
             return request.execute()
 
         return _do()

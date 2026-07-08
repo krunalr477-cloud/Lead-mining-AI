@@ -193,7 +193,9 @@ async def test_field_mask_header_is_strict_and_minimal():
     mask = captured["x-goog-fieldmask"]
     assert mask == PLACES_FIELD_MASK
     fields = set(mask.split(","))
-    # Only the cheap fields we map + pagination token.
+    # Only the cheap fields we map + pagination token. primaryType(+DisplayName)
+    # are in the same Pro band as rating/userRatingCount and feed the industry
+    # column (spec §S4).
     assert fields == {
         "places.id",
         "places.displayName",
@@ -204,6 +206,8 @@ async def test_field_mask_header_is_strict_and_minimal():
         "places.userRatingCount",
         "places.location",
         "places.addressComponents",
+        "places.primaryType",
+        "places.primaryTypeDisplayName",
         "nextPageToken",
     }
     # No expensive Atmosphere/Enterprise fields leaked in.

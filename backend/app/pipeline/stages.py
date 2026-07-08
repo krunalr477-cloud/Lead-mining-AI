@@ -23,6 +23,7 @@ from sqlalchemy import inspect as sa_inspect
 from app.adapters.base import CompanyRef, DiscoveredCompany, ExtractionResult
 from app.adapters.registry import get_registry
 from app.constants import (
+    AccessMethod,
     EnrichmentStatus,
     FinalEmailStatus,
     JobStage,
@@ -312,7 +313,9 @@ def _upsert_company(
         postal_code=discovered.postal_code,
         latitude=_dec(discovered.latitude),
         longitude=_dec(discovered.longitude),
-        industry=discovered.industry,
+        # Prefer the source's own type; fall back to the job's searched
+        # company_type so the Companies.industry column is never blank.
+        industry=discovered.industry or job.company_type,
         services=list(discovered.services or []),
         description=discovered.description,
         company_size=discovered.company_size,
@@ -346,6 +349,38 @@ def _add_company_source(
             access_method=evidence.access_method or "mock",
             compliance_posture=evidence.compliance_posture or "green",
             raw_payload=discovered.raw_payload or None,
+        )
+    )
+
+
+def _ensure_crawl_source(
+    session: Session, company: Company, source_name: str, source_url: str | None
+) -> None:
+    """Record provenance for a crawl/signal source that produced data, so
+    Companies.source_names and Sales_Ready.source_summary reflect every source
+    a company was actually seen in (not just the google_maps discovery hit).
+    Idempotent per (company, source_name) — safe on extraction resume."""
+    exists = session.scalar(
+        select(CompanySource.id)
+        .where(CompanySource.company_id == company.id)
+        .where(CompanySource.source_name == source_name)
+        .limit(1)
+    )
+    if exists:
+        return
+    access_method = (
+        AccessMethod.SERP.value
+        if source_name == SourceName.SERP_JOBS.value
+        else AccessMethod.HTTP_CRAWL.value
+    )
+    session.add(
+        CompanySource(
+            company_id=company.id,
+            source_name=source_name,
+            source_url=source_url,
+            access_method=access_method,
+            compliance_posture=_posture_for(source_name),
+            raw_payload=None,
         )
     )
 
@@ -428,7 +463,11 @@ def run_extraction(
         c_add, e_add = _apply_contacts(session, job, company, result, adapter.name.value)
         contacts_added += c_add
         emails_added += e_add
-        signals_added += _apply_signals(session, company, result)
+        s_add = _apply_signals(session, company, result)
+        signals_added += s_add
+        if c_add or e_add or s_add:
+            src_url = company.website if name == SourceName.COMPANY_WEBSITES else None
+            _ensure_crawl_source(session, company, name.value, src_url)
         if result.website_status and name == SourceName.COMPANY_WEBSITES:
             company.website_status = result.website_status
         ctx.finalize(
@@ -767,7 +806,10 @@ def run_validation_for_candidate(
         final_status=final_status,
         final_reason=final_reason,
         raw_result_json=mv_payload or None,
-        verified_at=utcnow() if final_status == FinalEmailStatus.VERIFIED else None,
+        # Stamp completion time for every terminal check (not just VERIFIED) so the
+        # sheet shows when each email was checked. UNKNOWN_RETRY is still pending a
+        # retry, so it stays null until it reaches a terminal status.
+        verified_at=(None if final_status == FinalEmailStatus.UNKNOWN_RETRY else utcnow()),
     )
     session.add(check)
 

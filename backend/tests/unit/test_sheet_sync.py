@@ -188,6 +188,20 @@ class TestSetupAndFormatting:
         assert "final_email_status" in contacts_fmt.status_columns
         assert contacts_fmt.status_colors[FinalEmailStatus.VERIFIED] == GREEN
 
+    def test_flush_all_populates_readme(self, session: Session, tenant: Tenant) -> None:
+        """S2: README is documentation, not DB-backed — flush_all must still write
+        its static rows (one per data tab) instead of skipping it."""
+        client = FakeSheetsClient(persist=False)
+        engine = SheetSyncEngine(session, client)
+        engine.setup_spreadsheet(tenant.id)
+        results = engine.flush_all(tenant.id)
+        assert any(r.tab == "README" for r in results)
+        readme_rows = client.tabs["README"]["rows"]
+        assert len(readme_rows) > 0
+        # Each README row documents a tab and its key column.
+        assert all(r.get("tab") for r in readme_rows)
+        assert any(r.get("key_column") for r in readme_rows)
+
     def test_status_color_palette_buckets(self) -> None:
         # Spec §5 lines 452-456: green/red/amber-purple/cyan buckets all present.
         assert STATUS_COLORS[FinalEmailStatus.VERIFIED] == GREEN
@@ -257,6 +271,47 @@ class TestIdempotency:
         contact_maps = [m for m in maps if m.tab == "Contacts"]
         assert len(contact_maps) == 1
         assert contact_maps[0].row_number == 2
+
+    def test_crashed_sync_does_not_duplicate_rows(
+        self, session: Session, tenant: Tenant
+    ) -> None:
+        """S1: a sync that appended rows but crashed before committing SheetRowMap
+        must NOT re-append every row on the next run. The engine reconciles the
+        empty row-map against the sheet's key column."""
+        company = _seed_company(session, tenant, "Acme")
+        _seed_contact(
+            session, tenant, company, email="ada@acme.example",
+            final_status=FinalEmailStatus.VERIFIED,
+        )
+        _seed_contact(
+            session, tenant, company, email="grace@acme.example",
+            final_status=FinalEmailStatus.CATCH_ALL_REVIEW,
+        )
+        client = FakeSheetsClient(persist=False)
+        engine = SheetSyncEngine(session, client)
+        engine.setup_spreadsheet(tenant.id)
+
+        first = engine.flush_tab(tenant.id, "Contacts")
+        assert first.appended == 2
+        rows_after_first = len(client.tabs["Contacts"]["rows"])
+        assert rows_after_first == 2
+
+        # Simulate the crash: rows are live in the sheet, but the row-map never
+        # committed. Wipe it.
+        for m in session.scalars(
+            select(SheetRowMap).where(
+                SheetRowMap.tenant_id == tenant.id, SheetRowMap.tab == "Contacts"
+            )
+        ).all():
+            session.delete(m)
+        session.flush()
+
+        client.append_count = 0
+        second = engine.flush_tab(tenant.id, "Contacts")
+        # Reconciled, not re-appended: zero new rows, sheet still has exactly 2.
+        assert second.appended == 0
+        assert client.append_count == 0
+        assert len(client.tabs["Contacts"]["rows"]) == 2
 
 
 class TestStaleRowReconciliation:

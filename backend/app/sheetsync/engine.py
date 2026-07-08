@@ -235,6 +235,28 @@ class SheetSyncEngine:
         ).all()
         by_key: dict[str, SheetRowMap] = {m.row_key: m for m in maps}
 
+        # Reconcile against the actual sheet when the row-map is empty. A sync that
+        # appended rows to Google Sheets but crashed before committing SheetRowMap
+        # (e.g. a 403 on a later tab) would otherwise re-append EVERY row as a
+        # duplicate on the next run. Seed positions from the sheet's key column so
+        # those rows are UPDATE-matched, not re-appended (empty hash forces one
+        # corrective system-column write).
+        if not by_key:
+            for existing_key, row_number in self.client.read_key_column(
+                tab_name, spec.key_column
+            ).items():
+                if existing_key and str(existing_key) not in by_key:
+                    m = SheetRowMap(
+                        tenant_id=tenant_id,
+                        spreadsheet_id=spreadsheet_id,
+                        tab=tab_name,
+                        row_key=str(existing_key),
+                        row_number=row_number,
+                        content_hash="",
+                    )
+                    self.session.add(m)
+                    by_key[str(existing_key)] = m
+
         to_append: list[tuple[str, dict, str]] = []  # (key, full_row, hash)
         updates: list[RangeUpdate] = []
         update_hashes: dict[str, str] = {}  # key -> new hash (by row_number)
@@ -325,13 +347,9 @@ class SheetSyncEngine:
         return result
 
     def flush_all(self, tenant_id: UUID) -> list[FlushResult]:
-        """Flush every DB-backed tab (skips the static README)."""
-        results = []
-        for tab in TABS:
-            if tab.name == "README":
-                continue
-            results.append(self.flush_tab(tenant_id, tab.name))
-        return results
+        """Flush every tab, README included — its rows are static documentation
+        produced by ``_readme_source`` and reconciled idempotently by key."""
+        return [self.flush_tab(tenant_id, tab.name) for tab in TABS]
 
     # ---- helpers --------------------------------------------------------- #
 

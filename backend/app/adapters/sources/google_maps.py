@@ -70,6 +70,8 @@ PLACES_FIELD_MASK = ",".join(
         "places.userRatingCount",
         "places.location",
         "places.addressComponents",
+        "places.primaryType",
+        "places.primaryTypeDisplayName",
         "nextPageToken",
     ]
 )
@@ -111,6 +113,19 @@ def _domain_from_url(url: str | None) -> str | None:
     if host.startswith("www."):
         host = host[4:]
     return host or None
+
+
+def _industry_from_place(place: dict[str, Any]) -> str | None:
+    """Human-readable industry from a Places (New) result. Prefer the localized
+    ``primaryTypeDisplayName`` ("Accounting Firm"); fall back to humanizing the
+    machine ``primaryType`` slug ("accounting_firm" → "Accounting Firm")."""
+    display = (place.get("primaryTypeDisplayName") or {}).get("text")
+    if display:
+        return display.strip() or None
+    slug = place.get("primaryType")
+    if slug:
+        return slug.replace("_", " ").strip().title() or None
+    return None
 
 
 def _parse_address_components(components: list[dict[str, Any]]) -> dict[str, str]:
@@ -223,6 +238,7 @@ class GoogleMapsAdapter(SourceAdapter):
             source_url=(
                 f"https://www.google.com/maps/place/?q=place_id:{place_id}" if place_id else None
             ),
+            industry=_industry_from_place(place),
             website=website,
             domain=_domain_from_url(website),
             phone=place.get("internationalPhoneNumber"),

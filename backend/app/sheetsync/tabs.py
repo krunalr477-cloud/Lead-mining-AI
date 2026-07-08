@@ -66,7 +66,9 @@ def scalarize(value: Any) -> Any:
         # ISO-8601; drop microseconds for stable, human-readable cells.
         return value.replace(microsecond=0).isoformat()
     if isinstance(value, Decimal):
-        return float(value)
+        # Preserve whole numbers as ints so counts/review-counts render "14",
+        # not "14.0"; keep true fractionals (ratings like 4.6) as floats.
+        return int(value) if value == value.to_integral_value() else float(value)
     if isinstance(value, (list, tuple)):
         return ", ".join(scalarize(v) for v in value if v is not None)
     return value

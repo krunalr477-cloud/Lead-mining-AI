@@ -36,6 +36,14 @@ from app.security.auth import (
 
 router = APIRouter(tags=["auth"])
 
+# Root-level OAuth callback aliases (mounted WITHOUT the /api/v1 prefix in main).
+# Google/Microsoft redirect URIs are registered per OAuth client; when a client is
+# registered with a short "/auth/callback"-style URI instead of the canonical
+# "/api/v1/auth/{provider}/callback", point GOOGLE_REDIRECT_URI / MICROSOFT_REDIRECT_URI
+# at one of these and Google/Microsoft will land here. They delegate to the same
+# handlers, so behavior is identical.
+compat_router = APIRouter(include_in_schema=False)
+
 
 def _set_session_cookie(response: Response, token: str) -> None:
     settings = get_settings()
@@ -156,6 +164,22 @@ async def microsoft_callback_api(
     identity = await exchange_ms_code(body.code)
     user = await upsert_microsoft_user(session, identity)
     return {"token": issue_token(user)}
+
+
+@compat_router.get("/auth/callback")
+async def google_callback_compat(
+    code: str, state: str, request: Request, session: SessionDep
+) -> RedirectResponse:
+    """Alias for the Google browser callback at a short, client-registered URI."""
+    return await google_callback_browser(code, state, request, session)
+
+
+@compat_router.get("/auth/microsoft/callback-short")
+async def microsoft_callback_compat(
+    code: str, state: str, request: Request, session: SessionDep
+) -> RedirectResponse:
+    """Alias for the Microsoft browser callback at a short, client-registered URI."""
+    return await microsoft_callback_browser(code, state, request, session)
 
 
 @router.post("/auth/logout")

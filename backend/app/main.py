@@ -6,6 +6,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import compat_router as compat_auth_router
 from app.api.router import router as api_router
 from app.config import get_settings
 
@@ -50,6 +51,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(api_router)
+    # Root-level OAuth callback aliases (e.g. /auth/callback) for OAuth clients
+    # registered with a short redirect URI. No /api/v1 prefix.
+    app.include_router(compat_auth_router)
     return app
 
 

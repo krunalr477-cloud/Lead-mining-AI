@@ -27,6 +27,7 @@ from datetime import timedelta
 
 import httpx
 import jwt
+import structlog
 from fastapi import HTTPException, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
@@ -39,6 +40,8 @@ from app.constants import Role
 from app.db import utcnow
 from app.models import IntegrationCredential, Tenant, User
 from app.security.crypto import get_cipher
+
+logger = structlog.get_logger(__name__)
 
 SESSION_COOKIE_NAME = "lm_session"
 OAUTH_STATE_COOKIE_NAME = "lm_oauth_state"
@@ -378,6 +381,12 @@ def _build_flow(state: str | None = None) -> Flow:
         },
         scopes=GOOGLE_OAUTH_SCOPES,
         state=state,
+        # Disable PKCE. We build the authorize URL and exchange the code on two
+        # SEPARATE Flow instances, so an auto-generated code_verifier from the
+        # first would be lost by the second -> Google's "Missing code verifier".
+        # This is a confidential web client (client_secret secures the exchange),
+        # so PKCE is optional here.
+        autogenerate_code_verifier=False,
     )
     # Must EXACTLY equal the URI registered in the Google Cloud console and the
     # one we later exchange against, or Google rejects the callback.
@@ -413,9 +422,18 @@ def exchange_code(code: str) -> OAuthIdentity:
     try:
         flow.fetch_token(code=code)
     except Exception as exc:  # oauthlib raises a zoo of error types
+        # Surface the provider's actual message (e.g. "redirect_uri_mismatch",
+        # "invalid_grant: code already redeemed") — the class name alone is opaque.
+        description = getattr(exc, "description", None) or str(exc)
+        logger.warning(
+            "google_code_exchange_failed",
+            error_type=exc.__class__.__name__,
+            description=description,
+            redirect_uri=get_settings().google_redirect_uri,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Google OAuth code exchange failed: {exc.__class__.__name__}",
+            detail=f"Google OAuth code exchange failed: {exc.__class__.__name__}: {description}",
         ) from exc
 
     credentials = flow.credentials

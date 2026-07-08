@@ -54,8 +54,15 @@ def get_sheets_client(tenant_id: UUID, session: Session) -> SheetsClient:
     if credential is None:
         return FakeSheetsClient.load(tenant_id)
 
-    refresh_token = get_cipher().decrypt(credential.encrypted_secret_reference)
     scopes = list(credential.scopes) or settings.google_sheets_scopes.split()
+    # The user may have signed in without granting the Sheets scope (e.g. only
+    # openid/email/profile). Without it, real Sheets calls 403 — use the local
+    # mirror instead so live jobs still complete cleanly (reconnect Google with
+    # the Sheets permission to write to a real spreadsheet).
+    if "https://www.googleapis.com/auth/spreadsheets" not in scopes:
+        return FakeSheetsClient.load(tenant_id)
+
+    refresh_token = get_cipher().decrypt(credential.encrypted_secret_reference)
 
     tenant = session.get(Tenant, tenant_id)
     spreadsheet_id = tenant.google_spreadsheet_id if tenant else None

@@ -17,7 +17,8 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
+from sqlalchemy import String, func, select
+from sqlalchemy import inspect as sa_inspect
 
 from app.adapters.base import CompanyRef, DiscoveredCompany, ExtractionResult
 from app.adapters.registry import get_registry
@@ -87,6 +88,22 @@ _DISCOVERY_SOURCES = {
 
 def _dec(value) -> Decimal | None:
     return None if value is None else Decimal(str(value))
+
+
+def _clamp_str_columns(obj) -> None:
+    """Truncate over-length string fields to their VARCHAR limits before flush.
+
+    Real crawled/enriched data is messy — a marketing paragraph mis-parsed as a
+    job title, a very long address, a tracking-laden URL — and a single value that
+    exceeds its column length aborts the whole task and stalls the job. Clamp
+    defensively so one bad record never blocks the pipeline.
+    """
+    for col in sa_inspect(type(obj)).columns:
+        length = getattr(col.type, "length", None)
+        if isinstance(col.type, String) and length:
+            val = getattr(obj, col.key, None)
+            if isinstance(val, str) and len(val) > length:
+                setattr(obj, col.key, val[:length])
 
 
 def _source_configs(session: Session, tenant_id: uuid.UUID) -> dict[str, DataSourceConfig]:
@@ -279,6 +296,7 @@ def _upsert_company(
         compliance_posture=evidence.compliance_posture,
         last_refreshed_at=utcnow(),
     )
+    _clamp_str_columns(company)
     session.add(company)
     session.flush()
     _add_company_source(session, company, evidence, discovered)
@@ -436,6 +454,7 @@ def _apply_contacts(
                     EnrichmentStatus.NOT_NEEDED if ec.email else EnrichmentStatus.PENDING
                 ),
             )
+            _clamp_str_columns(contact)
             session.add(contact)
             session.flush()
             contacts_added += 1
@@ -453,6 +472,7 @@ def _apply_contacts(
             ):
                 if getattr(contact, attr) in (None, "") and getattr(ec, attr):
                     setattr(contact, attr, getattr(ec, attr))
+            _clamp_str_columns(contact)
 
         if ec.email:
             emails_added += _add_email_candidate(session, contact, ec.email, source)

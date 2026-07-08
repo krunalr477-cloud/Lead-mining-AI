@@ -25,6 +25,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+import structlog
 from sqlalchemy import func, select
 
 from app.constants import FinalEmailStatus, JobStage, JobStatus
@@ -38,6 +39,8 @@ from app.workers.rate_limit import get_redis
 if TYPE_CHECKING:
     import redis
     from sqlalchemy.orm import Session
+
+logger = structlog.get_logger(__name__)
 
 __all__ = [
     "STAGE_ORDER",
@@ -234,17 +237,12 @@ def run_job_inline(job_id: uuid.UUID, *, session: Session | None = None) -> dict
         summary["sales_ready"] = sr
         session.commit()
 
-        # --- sync to sheets ---
+        # --- done (mark complete first, then a single non-fatal sheet sync) ---
         _enter_stage(session, job, JobStage.SYNCING)
-        sync = stages.run_sync(session, job.tenant_id)
-        summary["sync"] = sync
-        session.commit()
-
-        # --- done ---
         _complete(session, job)
         summary["totals"] = recompute_and_persist_totals(session, job)
-        # Re-flush the Mining_Jobs tab so the totals land in the sheet mirror.
-        stages.run_sync(session, job.tenant_id)
+        session.commit()
+        summary["sync"] = _safe_sync(session, job)
         session.commit()
         return summary
     except JobCancelled:
@@ -261,16 +259,56 @@ def run_job_inline(job_id: uuid.UUID, *, session: Session | None = None) -> dict
 # --------------------------------------------------------------------------- #
 
 
+# Ordered pipeline steps: (finish_progress, work_fn). The driver runs each step
+# whose finish_progress the job hasn't reached yet, commits after each, and is
+# therefore resumable — a re-delivered task skips completed steps instead of
+# re-running priced discovery/enrichment (fixes the double-discovery bug).
+def _step_discovery(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
+    _enter_stage(session, job, JobStage.DISCOVERING)
+    stages.run_discovery(session, redis_client, job)
+
+
+def _step_extraction(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
+    _enter_stage(session, job, JobStage.EXTRACTING)
+    for company in session.scalars(select(Company).where(Company.job_id == job.id)).all():
+        stages.run_extraction(session, redis_client, job, company)
+
+
+def _step_enrichment(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
+    _enter_stage(session, job, JobStage.ENRICHING)
+    for contact in session.scalars(
+        select(Contact).where(Contact.job_id == job.id, Contact.email.is_(None))
+    ).all():
+        stages.run_enrichment(session, redis_client, job, contact)
+
+
+def _step_validation(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
+    _enter_stage(session, job, JobStage.VALIDATING)
+    stages.validate_all_pending(session, redis_client, job)
+
+
+def _step_sales_ready(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
+    _enter_stage(session, job, JobStage.SALES_READY)
+    stages.recompute_sales_ready_for_job(session, job)
+
+
+_STEPS: list[tuple[int, str]] = [
+    (STAGE_PROGRESS[JobStage.DEDUPING], "_step_discovery"),
+    (STAGE_PROGRESS[JobStage.EXTRACTING], "_step_extraction"),
+    (STAGE_PROGRESS[JobStage.ENRICHING], "_step_enrichment"),
+    (STAGE_PROGRESS[JobStage.VALIDATING], "_step_validation"),
+    (STAGE_PROGRESS[JobStage.SALES_READY], "_step_sales_ready"),
+]
+
+
 def advance(job_id: uuid.UUID) -> None:
-    """Advance ``job_id`` from its current stage to the next (broker path).
+    """Run ``job_id`` to completion (broker path), committing after each stage.
 
-    Called at job start and by the unit task that decrements a fan-out counter to
-    zero. Idempotent and pause/cancel-safe: a paused/cancelled job stops here.
-
-    In this phase the broker path delegates each stage to the same synchronous
-    stage functions the inline runner uses (single-worker execution), then
-    transitions. The fan-out counter machinery lives in the task modules; this
-    driver is the transition authority.
+    Called at job start and (legacy) by fan-out unit tasks. Resumable and
+    pause/cancel-safe. On any stage exception the job is marked FAILED (with a
+    failure event + best-effort sheet re-sync) and the exception is re-raised so
+    Celery records the task failure; the mined data committed by earlier stages
+    is preserved.
     """
     session = sync_session_factory()
     redis_client = get_redis()
@@ -289,74 +327,85 @@ def advance(job_id: uuid.UUID) -> None:
             _cancel(session, job)
             session.commit()
             return
-
-        # Determine the stage to run from progress; default to discovery at start.
-        current = _current_stage(job)
-        _run_stage_and_transition(session, redis_client, job, current)
-        session.commit()
+        try:
+            _drive(session, redis_client, job)
+        except JobCancelled:
+            session.rollback()
+            return
+        except Exception as exc:
+            session.rollback()
+            _fail(session, job_id, exc)
+            raise
     finally:
         session.close()
 
 
-def _current_stage(job: MiningJob) -> JobStage:
-    pct = job.progress_percent or 0
-    for stage in STAGE_ORDER:
-        if pct < STAGE_PROGRESS[stage]:
-            return stage
-    return JobStage.DONE
-
-
-def _run_stage_and_transition(
-    session: Session, redis_client: redis.Redis, job: MiningJob, stage: JobStage
-) -> None:
-    """Execute one stage synchronously, then recurse into the next until DONE.
-
-    Single-worker broker execution mirrors the inline runner; a multi-worker
-    fan-out lands in a later phase using the runtime counters.
-    """
+def _drive(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
+    """Execute the pipeline steps in order, committing + checking pause/cancel
+    between each, then finalize with a single (non-fatal) sheet sync."""
     if job.status != JobStatus.RUNNING:
         _begin_running(session, job)
+        session.commit()
 
-    if stage in (JobStage.DISCOVERING, JobStage.RESOLVING_LOCATION):
-        _enter_stage(session, job, JobStage.DISCOVERING)
-        stages.run_discovery(session, redis_client, job)
-        _finish_stage(session, job, JobStage.DEDUPING)
-    elif stage in (JobStage.DEDUPING, JobStage.CRAWLING, JobStage.EXTRACTING):
-        _enter_stage(session, job, JobStage.EXTRACTING)
-        for company in session.scalars(select(Company).where(Company.job_id == job.id)).all():
-            stages.run_extraction(session, redis_client, job, company)
-        _finish_stage(session, job, JobStage.EXTRACTING)
-    elif stage == JobStage.ENRICHING:
-        _enter_stage(session, job, JobStage.ENRICHING)
-        for contact in session.scalars(
-            select(Contact).where(Contact.job_id == job.id, Contact.email.is_(None))
-        ).all():
-            stages.run_enrichment(session, redis_client, job, contact)
-        _finish_stage(session, job, JobStage.ENRICHING)
-    elif stage == JobStage.VALIDATING:
-        _enter_stage(session, job, JobStage.VALIDATING)
-        stages.validate_all_pending(session, redis_client, job)
-        _finish_stage(session, job, JobStage.VALIDATING)
-    elif stage == JobStage.SYNCING:
-        _enter_stage(session, job, JobStage.SALES_READY)
-        stages.recompute_sales_ready_for_job(session, job)
-        _enter_stage(session, job, JobStage.SYNCING)
-        stages.run_sync(session, job.tenant_id)
-    elif stage in (JobStage.SALES_READY, JobStage.DONE):
-        stages.recompute_sales_ready_for_job(session, job)
-        stages.run_sync(session, job.tenant_id)
-        _complete(session, job)
-        recompute_and_persist_totals(session, job)
-        stages.run_sync(session, job.tenant_id)
-        return
-
-    recompute_and_persist_totals(session, job)
-    # Drive the remaining stages in this single-worker phase.
-    if job.status == JobStatus.RUNNING and (job.progress_percent or 0) < 100:
+    for finish_pct, fn_name in _STEPS:
+        if (job.progress_percent or 0) >= finish_pct:
+            continue  # already done on a prior (re-delivered) run — resume
+        session.refresh(job)
+        if job.status in (JobStatus.PAUSED, JobStatus.CANCELLED):
+            return
         if is_cancelled(redis_client, job.id):
             _cancel(session, job)
+            session.commit()
             return
-        _run_stage_and_transition(session, redis_client, job, _current_stage(job))
+        globals()[fn_name](session, redis_client, job)
+        job.progress_percent = max(job.progress_percent or 0, finish_pct)
+        recompute_and_persist_totals(session, job)
+        session.commit()
+
+    # --- finalize: mark complete + one durable sheet sync with final status/totals ---
+    _enter_stage(session, job, JobStage.SYNCING)
+    _complete(session, job)
+    recompute_and_persist_totals(session, job)
+    session.commit()  # COMPLETED + totals durable before touching the (flaky) sheet
+    _safe_sync(session, job)
+    session.commit()
+
+
+def _safe_sync(session: Session, job: MiningJob) -> dict:
+    """Flush to Google Sheets; a sheet error is logged and swallowed (the mined
+    data is already committed, so one flaky external service never loses a run)."""
+    try:
+        return stages.run_sync(session, job.tenant_id)
+    except Exception as exc:  # noqa: BLE001 - sync must never abort a completed job
+        logger.warning(
+            "sheet_sync_failed",
+            job_id=str(job.id),
+            error_type=exc.__class__.__name__,
+            error=str(exc)[:300],
+        )
+        session.rollback()
+        return {"synced": False, "error": exc.__class__.__name__}
+
+
+def _fail(session: Session, job_id: uuid.UUID, exc: Exception) -> None:
+    """Mark a job FAILED with a failure event + best-effort sheet re-sync."""
+    job = session.get(MiningJob, job_id)
+    if job is None:
+        return
+    job.status = JobStatus.FAILED
+    job.completed_at = utcnow()
+    publish_event(
+        session,
+        tenant_id=job.tenant_id,
+        job_id=job.id,
+        stage=JobStage.DONE,
+        level="error",
+        message=f"Job failed: {exc.__class__.__name__}: {str(exc)[:280]}",
+    )
+    recompute_and_persist_totals(session, job)
+    session.commit()
+    _safe_sync(session, job)  # surface 'failed' + partial totals in Mining_Jobs
+    session.commit()
 
 
 # --------------------------------------------------------------------------- #

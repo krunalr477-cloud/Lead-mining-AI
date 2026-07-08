@@ -307,3 +307,108 @@ def test_cancel_flag_halts_pipeline(session: Session, monkeypatch: pytest.Monkey
         session.rollback()
         session.delete(session.get(Tenant, tenant.id))
         session.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Reliability: FAILED-marking + non-fatal sheet sync (broker `advance` path)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture()
+def force_demo(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Force mock adapters regardless of the ambient .env DEMO_MODE."""
+    from app.config import get_settings
+
+    monkeypatch.setenv("DEMO_MODE", "true")
+    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()
+
+
+def test_stage_failure_marks_job_failed(
+    session: Session, monkeypatch: pytest.MonkeyPatch, force_demo: None
+):
+    """A stage exception on the broker path marks the job FAILED and PRESERVES the
+    data committed by earlier stages (per-stage commit + _fail)."""
+    monkeypatch.setattr("app.adapters.mock.google_maps.MAPS_DEMO_LIMIT", SMALL_COMPANY_TARGET)
+    monkeypatch.setattr(
+        "app.adapters.mock.directories.MockDirectoriesAdapter.discover", _no_directory_discover
+    )
+    tenant, user = _make_tenant(session)
+    job = _make_job(session, tenant, user)
+    session.commit()
+    jid, tid = job.id, tenant.id
+    try:
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("validation exploded")
+
+        monkeypatch.setattr("app.pipeline.stages.validate_all_pending", _boom)
+        from app.pipeline.orchestrator import advance
+
+        with pytest.raises(RuntimeError):
+            advance(jid)  # runs on its own session; re-raises after marking FAILED
+
+        session.expire_all()
+        job = session.get(MiningJob, jid)
+        assert job.status == JobStatus.FAILED
+        assert job.completed_at is not None
+        # Discovery + extraction data survived the later-stage crash.
+        assert (
+            session.scalar(select(func.count()).select_from(Company).where(Company.job_id == jid))
+            > 0
+        )
+        assert (
+            session.scalar(select(func.count()).select_from(Contact).where(Contact.job_id == jid))
+            > 0
+        )
+        # Validation never finished, so no sales-ready leads leaked out.
+        assert (
+            session.scalar(
+                select(func.count()).select_from(SalesReadyLead).where(SalesReadyLead.job_id == jid)
+            )
+            == 0
+        )
+    finally:
+        session.rollback()
+        session.delete(session.get(Tenant, tid))
+        session.commit()
+
+
+def test_sync_failure_is_nonfatal(
+    session: Session, monkeypatch: pytest.MonkeyPatch, force_demo: None
+):
+    """A Google-Sheets error at the final sync must NOT fail the job — the mined
+    data is already committed, so the job completes and the error is swallowed."""
+    monkeypatch.setattr("app.adapters.mock.google_maps.MAPS_DEMO_LIMIT", SMALL_COMPANY_TARGET)
+    monkeypatch.setattr(
+        "app.adapters.mock.directories.MockDirectoriesAdapter.discover", _no_directory_discover
+    )
+    tenant, user = _make_tenant(session)
+    job = _make_job(session, tenant, user)
+    session.commit()
+    jid, tid = job.id, tenant.id
+    try:
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("Google Sheets API 403 SERVICE_DISABLED")
+
+        monkeypatch.setattr("app.pipeline.stages.run_sync", _boom)
+        from app.pipeline.orchestrator import advance
+
+        advance(jid)  # must NOT raise — _safe_sync swallows the sheet error
+
+        session.expire_all()
+        job = session.get(MiningJob, jid)
+        assert job.status == JobStatus.COMPLETED
+        assert job.progress_percent == 100
+        assert (
+            session.scalar(select(func.count()).select_from(Contact).where(Contact.job_id == jid))
+            > 0
+        )
+    finally:
+        session.rollback()
+        session.delete(session.get(Tenant, tid))
+        session.commit()

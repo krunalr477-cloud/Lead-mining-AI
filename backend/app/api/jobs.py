@@ -170,10 +170,10 @@ async def get_job(
 @router.post("/{job_id}/start", response_model=JobOut)
 async def start_job(
     job_id: uuid.UUID,
-    body: JobStartRequest,
     _actor: ControlActor,
     tenant_id: TenantId,
     session: SessionDep,
+    body: JobStartRequest | None = None,
     inline: Annotated[
         bool, Query(description="Run the whole pipeline synchronously (demo)")
     ] = False,
@@ -199,7 +199,7 @@ async def start_job(
     )
     await session.commit()
 
-    run_inline = inline or body.inline
+    run_inline = inline or (body.inline if body else False)
     if run_inline:
         from app.pipeline.orchestrator import run_job_inline
 

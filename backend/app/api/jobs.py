@@ -22,6 +22,7 @@ from sqlalchemy import or_, select
 from starlette.concurrency import run_in_threadpool
 
 from app.adapters.registry import get_registry
+from app.adapters.sources.google_maps import MAX_PAGES as _PLACES_MAX_PAGES
 from app.constants import JobStage, JobStatus, Posture, SourceName
 from app.db import utcnow
 from app.deps import CurrentUser, SessionDep, TenantId, require
@@ -47,6 +48,11 @@ ControlActor = Annotated[MiningJob, Depends(require("jobs:control"))]
 
 def _dec(value) -> Decimal | None:
     return None if value is None else Decimal(str(value))
+
+
+# Places (New) returns 20 results/page; discovery stops at MAX_PAGES pages, so a
+# single Google Maps search can surface at most this many businesses.
+PLACES_DISCOVERY_CEILING = _PLACES_MAX_PAGES * 20
 
 
 _VALID_SOURCES = frozenset(s.value for s in SourceName)
@@ -342,9 +348,11 @@ async def estimate_job(
         )
     }
 
-    # Rough company estimate from the discovery sources selected.
+    # Rough company estimate from the discovery sources selected. Google Maps is
+    # bounded by the Places (New) pagination cap (MAX_PAGES x 20 results/page), so
+    # a single search can't exceed PLACES_DISCOVERY_CEILING no matter the radius.
     per_source = {
-        SourceName.GOOGLE_MAPS.value: 250,
+        SourceName.GOOGLE_MAPS.value: PLACES_DISCOVERY_CEILING,
         SourceName.DIRECTORIES.value: 160,
         SourceName.YELLOW_PAGES.value: 12,
         SourceName.CLUTCH.value: 8,
@@ -361,6 +369,19 @@ async def estimate_job(
         card = registry.adapter_card(name)
         if name.value in per_source:
             est_companies += per_source[name.value]
+        if name == SourceName.GOOGLE_MAPS:
+            warnings.append(
+                ComplianceWarning(
+                    source=name.value,
+                    posture="info",
+                    message=(
+                        f"Google Maps returns at most ~{PLACES_DISCOVERY_CEILING} "
+                        "businesses per search (Places API pagination limit). To cover "
+                        "more, narrow the area and run several searches, or add the "
+                        "Public Directories source."
+                    ),
+                )
+            )
         if card.posture != Posture.GREEN:
             cfg = configs.get(name.value)
             resolved = registry.resolve_source(

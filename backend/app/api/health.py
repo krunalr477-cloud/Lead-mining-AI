@@ -3,6 +3,7 @@
 import redis.asyncio as aioredis
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
 from app.db import async_session_factory
@@ -42,3 +43,26 @@ async def readyz() -> dict[str, object]:
             detail={"status": "unavailable", "checks": checks},
         )
     return {"status": "ok", "checks": checks}
+
+
+@router.get("/workers/health")
+async def workers_health() -> dict[str, object]:
+    """Report whether any Celery worker is alive (spec §O1).
+
+    Queued jobs silently stall when no worker is running (a common footgun when
+    the worker was a session-bound process). This broadcasts a short-timeout ping
+    so the UI can show a "workers up?" indicator instead of leaving jobs stuck at
+    ``queued`` with no explanation. ``up=false`` is a normal answer (not a 5xx) so
+    the frontend can render it without treating it as an error."""
+
+    def _ping() -> list[str]:
+        try:
+            from app.workers.celery_app import app as celery_app
+
+            replies = celery_app.control.ping(timeout=1.0) or []
+            return [name for reply in replies for name in reply]
+        except Exception:
+            return []
+
+    workers = await run_in_threadpool(_ping)
+    return {"status": "ok" if workers else "down", "up": bool(workers), "workers": workers}

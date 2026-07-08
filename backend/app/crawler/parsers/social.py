@@ -43,6 +43,13 @@ HIRING_PHRASES = [
     "we are looking for",
 ]
 
+# Word-boundary matchers so a phrase only fires as a whole phrase — e.g.
+# "we're looking for" must NOT match inside "we're looking forward to...".
+_HIRING_RES: list[tuple[str, re.Pattern[str]]] = [
+    (phrase, re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE))
+    for phrase in HIRING_PHRASES
+]
+
 
 def classify_social(url: str) -> str | None:
     """Return 'linkedin' / 'linkedin_person' / 'facebook' for a business link."""
@@ -92,27 +99,33 @@ def extract_social_links(*, soup=None, extra_urls: list[str] | None = None) -> d
     out: dict[str, str] = {}
     if company_ln:
         out["linkedin"] = company_ln
-    elif person_ln:
-        out["linkedin"] = person_ln
+    if person_ln:
+        # A personal linkedin.com/in/ profile is NOT the company's page — keep it
+        # under its own key instead of promoting the first team member's profile
+        # into the company 'linkedin' slot.
+        out["linkedin_person"] = person_ln
     if facebook:
         out["facebook"] = facebook
     return out
 
 
 def detect_hiring_signals(text: str) -> list[tuple[str, str]]:
-    """Return (matched_phrase, surrounding_snippet) for each hiring phrase hit."""
+    """Return (matched_phrase, surrounding_snippet) for each hiring phrase hit.
+
+    Matches on word boundaries, so "we're looking for" fires on "we're looking for
+    an accountant" but not on "we're looking forward to your visit"."""
     if not text:
         return []
-    low = text.lower()
     hits: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for phrase in HIRING_PHRASES:
-        idx = low.find(phrase)
-        if idx == -1 or phrase in seen:
+    for phrase, pattern in _HIRING_RES:
+        m = pattern.search(text)
+        if m is None or phrase in seen:
             continue
         seen.add(phrase)
+        idx = m.start()
         start = max(0, idx - 40)
-        end = min(len(text), idx + len(phrase) + 60)
+        end = min(len(text), m.end() + 60)
         snippet = " ".join(text[start:end].split())
         hits.append((phrase, snippet))
     return hits

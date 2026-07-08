@@ -80,6 +80,40 @@ def _normalize(email: str) -> str:
     return email.strip().strip(".").lower()
 
 
+# File extensions that ``EMAIL_RE`` mis-reads as a domain when a retina/asset name
+# like ``logo@2x.png`` or ``hero@3x.jpg`` appears in the HTML — an image path, not
+# a person.
+_ASSET_TLDS = frozenset(
+    {
+        "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "avif",
+        "css", "js", "mjs", "json", "map", "xml", "woff", "woff2", "ttf",
+        "eot", "otf", "mp4", "webm", "mp3", "wav", "pdf", "zip",
+    }
+)
+# Domains that only ever appear as copy-paste placeholders in templates/boilerplate.
+_PLACEHOLDER_DOMAINS = frozenset(
+    {
+        "example.com", "example.org", "example.net", "email.com", "domain.com",
+        "yourdomain.com", "yourcompany.com", "mycompany.com", "company.com",
+        "yoursite.com", "mysite.com", "website.com", "test.com", "sentry.io",
+    }
+)
+
+
+def _is_asset_or_placeholder(email: str) -> bool:
+    """True for image/asset filenames (``logo@2x.png``) and template placeholders
+    (``you@example.com``) that the address regex would otherwise accept."""
+    domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+    if not domain:
+        return True
+    tld = domain.rsplit(".", 1)[-1]
+    if tld in _ASSET_TLDS:
+        return True
+    if domain in _PLACEHOLDER_DOMAINS:
+        return True
+    return False
+
+
 def extract_emails(*, text: str = "", html: str = "", soup=None) -> list[str]:
     """Return de-duplicated, lower-cased emails from text/HTML/soup.
 
@@ -97,7 +131,7 @@ def extract_emails(*, text: str = "", html: str = "", soup=None) -> list[str]:
             return
         for match in EMAIL_RE.findall(candidate):
             norm = _normalize(match)
-            if norm and norm not in seen:
+            if norm and norm not in seen and not _is_asset_or_placeholder(norm):
                 seen.add(norm)
                 found.append(norm)
 

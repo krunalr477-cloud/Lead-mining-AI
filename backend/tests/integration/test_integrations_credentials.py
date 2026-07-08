@@ -37,6 +37,17 @@ from app.services.credentials import (
 Scenario = Callable[[async_sessionmaker[AsyncSession]], Awaitable[None]]
 
 
+@pytest.fixture(autouse=True)
+def _isolate_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """store_credential now mirrors API keys into .env (spec §O2); redirect that
+    write to a throwaway file so tests never mutate the real repo .env."""
+    from app.services import envfile
+
+    fake = tmp_path / ".env"
+    fake.write_text("")
+    monkeypatch.setattr(envfile, "env_path", lambda: fake)
+
+
 def _run(scenario: Scenario) -> None:
     """Run an async scenario on a fresh loop + NullPool engine, then dispose."""
 

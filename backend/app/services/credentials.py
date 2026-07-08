@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import IntegrationCredential
 from app.security.crypto import decrypt_credential, encrypt_credential, masked_hint
+from app.services.envfile import UnmanagedKeyError, write_env_values
 
 __all__ = [
     "ProviderSpec",
@@ -143,6 +144,19 @@ def validate_input(spec: ProviderSpec, fields: dict[str, str | None]) -> dict[st
     return cleaned
 
 
+def _mirror_secret_to_env(spec: ProviderSpec | None, secret: str | None) -> None:
+    """Keep the repo ``.env`` in sync with an API-key card, so the live adapters —
+    which read their key from process ``settings``, not the DB — actually pick up a
+    key entered in the Settings UI (spec §O2). Only pure API-key providers with an
+    env attribute are mirrored; OAuth/licensed providers keep their own flows."""
+    if spec is None or not spec.env_attr or spec.primary_field != "api_key":
+        return
+    try:
+        write_env_values({spec.env_attr.upper(): secret or ""})
+    except UnmanagedKeyError:
+        return  # env attr not in the managed allowlist — DB row is still set
+
+
 async def store_credential(
     session: AsyncSession,
     *,
@@ -180,6 +194,8 @@ async def store_credential(
         row.last_verified_at = None
     await session.commit()
     await session.refresh(row)
+    spec = PROVIDER_SPECS.get(provider)
+    _mirror_secret_to_env(spec, fields.get(spec.primary_field) if spec else None)
     return row
 
 
@@ -197,6 +213,7 @@ async def delete_credential(session: AsyncSession, *, tenant_id: uuid.UUID, prov
         return False
     await session.delete(row)
     await session.commit()
+    _mirror_secret_to_env(PROVIDER_SPECS.get(provider), None)  # clear the .env key too
     return True
 
 

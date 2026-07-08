@@ -242,6 +242,37 @@ def test_no_hiring_signal_in_plain_text():
     assert detect_hiring_signals("We provide audit and tax services.") == []
 
 
+def test_hiring_signal_ignores_substring_false_positive():
+    # "we're looking for" must NOT fire inside "we're looking forward" (E9).
+    text = "We're looking forward to serving you. Contact us today."
+    assert detect_hiring_signals(text) == []
+    # But a real hiring phrase with a word boundary still matches.
+    hits = {p for p, _ in detect_hiring_signals("We're looking for a tax manager.")}
+    assert "we're looking for" in hits
+
+
+def test_personal_linkedin_not_stored_as_company():
+    # A lone personal /in/ profile must land under linkedin_person, not the
+    # company 'linkedin' slot (E9).
+    html = '<a href="https://linkedin.com/in/john-doe">John on LinkedIn</a>'
+    links = extract_social_links(soup=BeautifulSoup(html, "lxml"))
+    assert "linkedin" not in links
+    assert links["linkedin_person"] == "https://linkedin.com/in/john-doe"
+
+
+@pytest.mark.parametrize(
+    "junk",
+    ["logo@2x.png", "hero@3x.jpg", "icon@2x.webp", "you@example.com", "email@domain.com"],
+)
+def test_extract_emails_drops_assets_and_placeholders(junk):
+    assert extract_emails(text=f"contact {junk} for details") == []
+
+
+def test_extract_emails_keeps_real_address_near_asset():
+    got = extract_emails(text="img logo@2x.png and real jane@acme.com")
+    assert got == ["jane@acme.com"]
+
+
 # --------------------------------------------------------------------------- #
 # Frontier scoring + same-domain filtering
 # --------------------------------------------------------------------------- #

@@ -13,6 +13,7 @@ the mock adapters, and every mock row is marked ``is_demo=True``.
 
 from __future__ import annotations
 
+import time
 import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -58,11 +59,44 @@ from app.pipeline.validation import (
     decide,
     is_role_based,
 )
+from app.config import get_settings
 from app.services.events import publish_event
+from app.workers.rate_limit import TokenBucket
 
 if TYPE_CHECKING:
     import redis
     from sqlalchemy.orm import Session
+
+
+def _gate_provider(
+    redis_client: "redis.Redis",
+    tenant_id: uuid.UUID,
+    provider: str,
+    rate_per_min: int,
+    *,
+    _max_wait: float = 30.0,
+    _attempts: int = 4,
+) -> None:
+    """Pace outbound provider calls through a per-tenant token bucket so a burst
+    of enrichment/validation lookups can't hammer a provider into 429s (spec §P7).
+    Best-effort: if Redis or the bucket is unavailable, proceed without gating
+    rather than stalling the pipeline."""
+    try:
+        bucket = TokenBucket(
+            redis_client,
+            key=f"rl:provider:{tenant_id}:{provider}",
+            rate=float(rate_per_min),
+            per_seconds=60.0,
+        )
+        for _ in range(_attempts):
+            if bucket.acquire(1):
+                return
+            delay = bucket.suggested_delay()
+            if delay <= 0:
+                return
+            time.sleep(min(delay, _max_wait))
+    except Exception:  # Redis down / no EVAL support -> don't block the pipeline
+        return
 
 __all__ = [
     "recompute_sales_ready_for_job",
@@ -669,6 +703,12 @@ def run_enrichment(
     )
     ctx.open()
     company = session.get(Company, contact.company_id)
+    _gate_provider(
+        redis_client,
+        job.tenant_id,
+        adapter.provider or "enrichment",
+        get_settings().enrichment_lookups_per_minute,
+    )
     results = run_async(
         adapter.enrich(
             company_name=company.canonical_name if company else "",
@@ -724,10 +764,18 @@ def validate_all_pending(session: Session, redis_client: redis.Redis, job: Minin
 
 
 def run_validation_for_candidate(
-    session: Session, redis_client: redis.Redis, job: MiningJob, candidate: EmailCandidate
+    session: Session,
+    redis_client: redis.Redis,
+    job: MiningJob,
+    candidate: EmailCandidate,
+    prior_check: ValidationCheck | None = None,
 ) -> ValidationCheck:
     """Run all six stages for one email candidate, write ValidationCheck, and set
-    the owning Contact.final_email_status."""
+    the owning Contact.final_email_status.
+
+    ``prior_check`` (used by the UNKNOWN_RETRY beat) updates that check in place and
+    bumps its retry_count instead of inserting a new one, so a retried email keeps
+    a single validation row rather than accumulating one per attempt."""
     registry = get_registry()
     rules = load_rules(session, job.tenant_id)
     contact = session.get(Contact, candidate.contact_id)
@@ -768,9 +816,14 @@ def run_validation_for_candidate(
     )
     ctx.open()
     if not hard_failed:
+        settings = get_settings()
+        _gate_provider(redis_client, job.tenant_id, "llm", settings.llm_scores_per_minute)
         scored = run_async(registry.scorer_adapter().score([email], ctx))
         if scored:
             _, llm_score, llm_reason = scored[0]
+        _gate_provider(
+            redis_client, job.tenant_id, "verifier", settings.verifier_checks_per_minute
+        )
         raw_status, mv_payload = run_async(registry.verifier_adapter().verify(email, ctx))
         from app.constants import MillionVerifierStatus
 
@@ -792,26 +845,45 @@ def run_validation_for_candidate(
         rules=rules,
     )
 
-    check = ValidationCheck(
-        email_candidate_id=candidate.id,
-        contact_id=candidate.contact_id,
-        company_id=contact.company_id if contact else None,
-        syntax_status=StageStatus.PASS if syntax_ok else StageStatus.FAIL,
-        disposable_status=StageStatus.FAIL if disposable_hit else StageStatus.PASS,
-        role_based_status=StageStatus.FAIL if role_hit else StageStatus.PASS,
-        mx_status=mx_status,
-        llm_score=_dec(llm_score),
-        llm_reason=llm_reason,
-        millionverifier_status=(mv_status.value if isinstance(mv_status, _MV) else None),
-        final_status=final_status,
-        final_reason=final_reason,
-        raw_result_json=mv_payload or None,
-        # Stamp completion time for every terminal check (not just VERIFIED) so the
-        # sheet shows when each email was checked. UNKNOWN_RETRY is still pending a
-        # retry, so it stays null until it reaches a terminal status.
-        verified_at=(None if final_status == FinalEmailStatus.UNKNOWN_RETRY else utcnow()),
-    )
-    session.add(check)
+    mv_final = mv_status.value if isinstance(mv_status, _MV) else None
+    # Stamp completion time for every terminal check (not just VERIFIED) so the
+    # sheet shows when each email was checked. UNKNOWN_RETRY is still pending a
+    # retry, so it stays null until it reaches a terminal status.
+    verified_at = None if final_status == FinalEmailStatus.UNKNOWN_RETRY else utcnow()
+
+    if prior_check is not None:
+        # Retry: overwrite the existing row's results and bump the attempt count.
+        check = prior_check
+        check.syntax_status = StageStatus.PASS if syntax_ok else StageStatus.FAIL
+        check.disposable_status = StageStatus.FAIL if disposable_hit else StageStatus.PASS
+        check.role_based_status = StageStatus.FAIL if role_hit else StageStatus.PASS
+        check.mx_status = mx_status
+        check.llm_score = _dec(llm_score)
+        check.llm_reason = llm_reason
+        check.millionverifier_status = mv_final
+        check.final_status = final_status
+        check.final_reason = final_reason
+        check.raw_result_json = mv_payload or None
+        check.verified_at = verified_at
+        check.retry_count = (prior_check.retry_count or 0) + 1
+    else:
+        check = ValidationCheck(
+            email_candidate_id=candidate.id,
+            contact_id=candidate.contact_id,
+            company_id=contact.company_id if contact else None,
+            syntax_status=StageStatus.PASS if syntax_ok else StageStatus.FAIL,
+            disposable_status=StageStatus.FAIL if disposable_hit else StageStatus.PASS,
+            role_based_status=StageStatus.FAIL if role_hit else StageStatus.PASS,
+            mx_status=mx_status,
+            llm_score=_dec(llm_score),
+            llm_reason=llm_reason,
+            millionverifier_status=mv_final,
+            final_status=final_status,
+            final_reason=final_reason,
+            raw_result_json=mv_payload or None,
+            verified_at=verified_at,
+        )
+        session.add(check)
 
     candidate.status = final_status.value
     if contact is not None:

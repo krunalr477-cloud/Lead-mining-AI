@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     # Sheets sync
     sheets_writes_per_minute: int = 50
 
+    # Provider rate limits (per tenant, per minute) — paced through a token bucket
+    # so enrichment/validation don't hammer a provider into 429s.
+    enrichment_lookups_per_minute: int = 30
+    verifier_checks_per_minute: int = 60
+    llm_scores_per_minute: int = 60
+
     @property
     def sync_database_url(self) -> str:
         """psycopg (sync) URL for Celery workers and Alembic."""

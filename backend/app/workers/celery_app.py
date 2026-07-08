@@ -82,9 +82,9 @@ app.conf.update(
             "task": "app.workers.tasks.bounce.poll_replies",
             "schedule": settings.bounce_poll_interval_minutes * 60,
         },
-        # "retry-unknown-emails": {
-        #     "task": "app.workers.tasks.validation.retry_unknown_batch",
-        #     "schedule": 6 * 60 * 60,
-        # },
+        "retry-unknown-emails": {
+            "task": "app.workers.tasks.validation.retry_unknown_batch",
+            "schedule": 6 * 60 * 60,  # every 6 hours
+        },
     },
 )

@@ -49,6 +49,24 @@ def _dec(value) -> Decimal | None:
     return None if value is None else Decimal(str(value))
 
 
+_VALID_SOURCES = frozenset(s.value for s in SourceName)
+
+
+def _validate_sources(selected: list[str]) -> None:
+    """Reject source slugs the pipeline doesn't recognize, so a frontend/backend
+    naming drift fails loudly at request time instead of silently dropping the
+    source mid-run (e.g. the historical public_directories/google_jobs mismatch)."""
+    unknown = [s for s in selected if s not in _VALID_SOURCES]
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Unknown data source(s): {', '.join(sorted(unknown))}. "
+                f"Valid sources: {', '.join(sorted(_VALID_SOURCES))}."
+            ),
+        )
+
+
 async def _get_job(session: SessionDep, tenant_id: uuid.UUID, job_id: uuid.UUID) -> MiningJob:
     job = await session.get(MiningJob, job_id)
     if job is None or job.tenant_id != tenant_id:
@@ -69,6 +87,7 @@ async def create_job(
         SourceName.COMPANY_WEBSITES.value,
         SourceName.DIRECTORIES.value,
     ]
+    _validate_sources(selected)
     notes = body.notes
     # Persist enrichment/validation/output options into notes-adjacent totals_json
     # metadata so nothing is lost (dedicated columns land in later phases).
@@ -314,6 +333,7 @@ async def estimate_job(
         SourceName.COMPANY_WEBSITES.value,
         SourceName.DIRECTORIES.value,
     ]
+    _validate_sources(selected)
     registry = get_registry()
     configs = {
         c.source_name: c

@@ -362,6 +362,17 @@ def _drive(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
         recompute_and_persist_totals(session, job)
         session.commit()
 
+    # A pause/cancel that lands DURING the final stage (after that iteration's
+    # pre-check) would otherwise be clobbered by the COMPLETED write below.
+    # Re-check once more before finalizing so a late pause is honored.
+    session.refresh(job)
+    if job.status in (JobStatus.PAUSED, JobStatus.CANCELLED):
+        return
+    if is_cancelled(redis_client, job.id):
+        _cancel(session, job)
+        session.commit()
+        return
+
     # --- finalize: mark complete + one durable sheet sync with final status/totals ---
     _enter_stage(session, job, JobStage.SYNCING)
     _complete(session, job)

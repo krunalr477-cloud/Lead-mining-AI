@@ -14,6 +14,7 @@ const SOURCE_LABELS: Record<string, string> = {
   directories: "Directories",
   facebook_signals: "Facebook",
   facebook: "Facebook",
+  serp_jobs: "Job Boards",
   serp: "Web Search",
   rocketreach: "RocketReach",
   linkedin: "LinkedIn",

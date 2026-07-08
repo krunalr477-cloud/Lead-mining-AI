@@ -42,6 +42,7 @@ from app.models import (
 from app.models.settings_models import default_validation_rules
 from app.pipeline.orchestrator import compute_totals, run_job_inline
 from app.pipeline.runtime import mark_cancelled
+from app.pipeline.stages import run_validation_for_candidate
 from app.workers.rate_limit import get_redis
 
 pytestmark = pytest.mark.integration
@@ -412,3 +413,40 @@ def test_sync_failure_is_nonfatal(
         session.rollback()
         session.delete(session.get(Tenant, tid))
         session.commit()
+
+
+def test_unknown_retry_updates_check_in_place(small_pipeline):
+    """P8: re-validating an UNKNOWN_RETRY email updates the SAME ValidationCheck
+    (bumping retry_count) rather than appending a new validation row."""
+    session, job = small_pipeline
+    check = session.scalars(
+        select(ValidationCheck).where(ValidationCheck.contact_id.is_not(None)).limit(1)
+    ).first()
+    assert check is not None
+    candidate = session.get(EmailCandidate, check.email_candidate_id)
+    assert candidate is not None
+
+    # Force it back to the retry state, as a transient provider failure would.
+    check.final_status = FinalEmailStatus.UNKNOWN_RETRY.value
+    check.retry_count = 0
+    candidate.status = FinalEmailStatus.UNKNOWN_RETRY.value
+    session.flush()
+
+    before = session.scalar(
+        select(func.count())
+        .select_from(ValidationCheck)
+        .where(ValidationCheck.email_candidate_id == candidate.id)
+    )
+    updated = run_validation_for_candidate(
+        session, get_redis(), job, candidate, prior_check=check
+    )
+    session.flush()
+    after = session.scalar(
+        select(func.count())
+        .select_from(ValidationCheck)
+        .where(ValidationCheck.email_candidate_id == candidate.id)
+    )
+
+    assert updated.id == check.id  # same row updated in place
+    assert after == before  # no duplicate check appended
+    assert updated.retry_count == 1  # attempt counted

@@ -176,7 +176,7 @@ const SOURCES: SourceDef[] = [
     note: "Public-page crawl respecting robots.txt and rate limits. Cleared for use.",
   },
   {
-    key: "public_directories",
+    key: "directories",
     label: "Public Directories",
     tier: "green",
     note: "Open or licensed directory datasets that permit access. Cleared for use.",
@@ -189,7 +189,7 @@ const SOURCES: SourceDef[] = [
     note: "Compliance-gated. Official Meta/Graph access for authorized pages only, or public page/hiring signals via approved provider. No private data or automated login.",
   },
   {
-    key: "google_jobs",
+    key: "serp_jobs",
     label: "Google Jobs / SERP",
     tier: "amber",
     note: "Compliance-gated. Job/hiring-signal discovery via a SERP or approved provider. Enable in Data Source settings.",
@@ -348,7 +348,7 @@ export default function NewJobPage() {
   const isAmberEnabled = useMemo(
     () => (key: string) => {
       if (!providers) return false;
-      if (key === "google_jobs" || key === "indeed") {
+      if (key === "serp_jobs" || key === "indeed") {
         return providers.serp === "live";
       }
       // facebook_signals + any other amber source: gated until admin-enabled.

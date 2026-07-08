@@ -15,7 +15,12 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
+from app.crawler.parsers.names import is_plausible_person_name
+
 __all__ = ["TeamMember", "DESIGNATION_KEYWORDS", "extract_team_members", "classify_designation"]
+
+# A designation longer than this is a marketing paragraph, not a job title.
+_MAX_DESIGNATION_LEN = 80
 
 # (keyword, seniority, role_category) — order matters: first match wins.
 DESIGNATION_KEYWORDS: list[tuple[str, str, str]] = [
@@ -87,9 +92,10 @@ def _looks_like_name(text: str) -> str | None:
     if not m:
         return None
     name = m.group(1).strip()
-    # Guard against ALL-CAPS headings or single tokens.
-    parts = name.split()
-    if len(parts) < 2:
+    # A candidate must survive the shared person-name gate: rejects UI text
+    # ("Learn More"), service phrases ("Outsourced Controller Services"), and
+    # template/placeholder nodes that the loose Title-Case regex would accept.
+    if not is_plausible_person_name(name):
         return None
     return name
 
@@ -101,17 +107,22 @@ def _candidate_containers(soup):
         classes = el.get("class") or []
         for cls in classes:
             low = cls.lower()
+            # People-grid signals only. "card" was dropped: generic service/feature
+            # cards match it and get mis-scanned as people ("Outsourced Controller
+            # Services" paired with a role keyword).
             if any(
                 tok in low
                 for tok in (
                     "team",
                     "member",
                     "person",
-                    "card",
                     "staff",
                     "people",
                     "profile",
                     "leader",
+                    "bio",
+                    "employee",
+                    "attorney",
                 )
             ):
                 counter[cls] += 1
@@ -145,7 +156,7 @@ def extract_team_members(soup) -> list[TeamMember]:
                 if cand:
                     name = cand
                     continue
-            if designation is None:
+            if designation is None and len(line) <= _MAX_DESIGNATION_LEN:
                 cls = classify_designation(line)
                 if cls is not None:
                     designation = line

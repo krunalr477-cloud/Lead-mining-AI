@@ -31,9 +31,11 @@ from app.crawler.frontier import Frontier, registrable_domain
 from app.crawler.parsers import emails as email_parser
 from app.crawler.parsers import phones as phone_parser
 from app.crawler.parsers.jsonld import parse_jsonld
+from app.crawler.parsers.names import derive_name_from_local, is_plausible_person_name
 from app.crawler.parsers.social import detect_hiring_signals, extract_social_links
 from app.crawler.parsers.team_pages import classify_designation, extract_team_members
 from app.crawler.robots import fetch_robots
+from app.pipeline.validation import is_role_based
 
 if TYPE_CHECKING:
     from app.adapters.base import CompanyRef
@@ -106,16 +108,22 @@ def parse_page(url: str, html: str, *, country: str | None = None) -> PagePartia
         if p not in partial.phones:
             partial.phones.append(p)
 
-    # JSON-LD people -> contacts
+    # JSON-LD people -> contacts (gated: reject template/placeholder Person nodes
+    # like "Template"/"boilerplate" that CMSes emit with @type Person).
     for person in ld.people:
+        if not is_plausible_person_name(person.name):
+            continue
         first, last = _split_name(person.name or "")
-        role = classify_designation(person.job_title or "") if person.job_title else None
+        designation = (
+            person.job_title if (person.job_title and len(person.job_title) <= 80) else None
+        )
+        role = classify_designation(designation) if designation else None
         partial.contacts.append(
             ExtractedContact(
                 full_name=person.name,
                 first_name=first,
                 last_name=last,
-                designation=person.job_title,
+                designation=designation,
                 seniority=role[0] if role else None,
                 role_category=role[1] if role else None,
                 email=person.email,
@@ -123,8 +131,8 @@ def parse_page(url: str, html: str, *, country: str | None = None) -> PagePartia
                 linkedin_url=next((s for s in person.same_as if "linkedin" in s.lower()), None),
                 source_page=url,
                 source_type="jsonld",
-                source_snippet=f"{person.name} — {person.job_title or ''}".strip(" —"),
-                confidence_score=0.85,  # structured data is high-signal
+                source_snippet=f"{person.name} — {designation or ''}".strip(" —"),
+                confidence_score=0.78,  # structured data, but capped below verified emails
             )
         )
 
@@ -201,20 +209,44 @@ def parse_page(url: str, html: str, *, country: str | None = None) -> PagePartia
 
 
 def _mint_role_contacts(emails: list[str], domain: str, url: str) -> list[ExtractedContact]:
-    """Turn bare emails with no owning person into low-confidence contacts so
-    role inboxes (info@, contact@) still surface for the validation pipeline."""
+    """Turn bare emails with no owning person into contacts.
+
+    Role inboxes (info@, careers@) are labeled ``role_inbox`` via the real
+    tokenized ``is_role_based`` check — not a digit heuristic that wrongly tagged
+    ``derek.johnson@`` as a role inbox. Person-shaped locals get a derived name
+    ("derek.johnson" -> "Derek Johnson") and rank ABOVE role inboxes.
+    """
     out: list[ExtractedContact] = []
     for email in emails:
         local = email.split("@", 1)[0]
+        if is_role_based(email):
+            out.append(
+                ExtractedContact(
+                    email=email,
+                    full_name=None,
+                    source_page=url,
+                    source_type="crawler_email",
+                    source_snippet=email,
+                    confidence_score=0.4,
+                    role_category="role_inbox",
+                )
+            )
+            continue
+        derived = derive_name_from_local(local)
+        full = first = last = None
+        if derived:
+            full, first, last = derived
         out.append(
             ExtractedContact(
                 email=email,
-                full_name=None,
+                full_name=full,
+                first_name=first,
+                last_name=last,
                 source_page=url,
                 source_type="crawler_email",
                 source_snippet=email,
-                confidence_score=0.45,
-                role_category="role_inbox" if not any(c.isdigit() for c in local) else None,
+                confidence_score=0.68 if full else 0.55,
+                role_category=None,
             )
         )
     return out

@@ -90,6 +90,36 @@ def _dec(value) -> Decimal | None:
     return None if value is None else Decimal(str(value))
 
 
+# Keep the best N contacts per company (spec §9 "decision makers, prioritized")
+# so one large firm's public staff directory can't dump 19 rows.
+MAX_CONTACTS_PER_COMPANY = 15
+
+
+def _contact_excluded(ec, exclude_keywords: list[str] | None) -> bool:
+    """True if a contact matches a job exclude keyword in its name/designation/
+    role/email-local (spec §7 exclude_keywords, applied at extraction)."""
+    if not exclude_keywords:
+        return False
+    parts = [ec.full_name or "", ec.designation or "", ec.role_category or ""]
+    if ec.email:
+        parts.append(ec.email.split("@", 1)[0])
+    hay = " ".join(parts).lower()
+    return any(kw in hay for kw in (k.strip().lower() for k in exclude_keywords) if kw)
+
+
+def _extraction_rank(ec) -> tuple:
+    """Rank an extracted contact for the per-company cap: decision-makers with a
+    real (non-role) email first, then role relevance, then crawl confidence."""
+    from app.pipeline.sales_ready import _ROLE_RELEVANCE
+
+    relevance = 0
+    for key in (ec.role_category, ec.seniority, ec.designation):
+        if isinstance(key, str) and key.strip():
+            relevance = max(relevance, _ROLE_RELEVANCE.get(key.strip().lower(), 0))
+    is_person = 1 if ((ec.email and ec.role_category != "role_inbox") or ec.full_name) else 0
+    return (is_person, relevance, float(ec.confidence_score or 0))
+
+
 def _clamp_str_columns(obj) -> None:
     """Truncate over-length string fields to their VARCHAR limits before flush.
 
@@ -427,10 +457,22 @@ def _apply_contacts(
         if ckey:
             by_key[ckey] = ct
 
-    for ec in result.contacts:
+    # Drop exclude-keyword matches (careers@, HR, ...), rank best-first, and cap
+    # NEW contacts so total per company stays within budget (spec §7/§9/§12).
+    incoming = sorted(
+        (ec for ec in result.contacts if not _contact_excluded(ec, job.exclude_keywords)),
+        key=_extraction_rank,
+        reverse=True,
+    )
+    room = max(0, MAX_CONTACTS_PER_COMPANY - len(by_key))
+
+    for ec in incoming:
         ckey = contact_dedupe_key(ec.email, ec.full_name, str(company.id))
         contact = by_key.get(ckey) if ckey else None
         if contact is None:
+            if room <= 0:
+                continue  # per-company cap reached — drop the overflow
+            room -= 1
             contact = Contact(
                 tenant_id=job.tenant_id,
                 job_id=job.id,
@@ -563,6 +605,14 @@ def run_enrichment(
     overwrites a higher-confidence value."""
     registry = get_registry()
     if contact.email:
+        contact.enrichment_status = EnrichmentStatus.NOT_NEEDED
+        return {"enriched": 0}
+
+    # Only spend a paid lookup on a real, named person. A nameless role inbox or
+    # any junk that slipped the extractor gate is not enrichable (spec §10).
+    from app.crawler.parsers.names import is_plausible_person_name
+
+    if not is_plausible_person_name(contact.full_name):
         contact.enrichment_status = EnrichmentStatus.NOT_NEEDED
         return {"enriched": 0}
 

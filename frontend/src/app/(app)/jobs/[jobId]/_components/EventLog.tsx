@@ -39,7 +39,14 @@ function timeOf(iso: string): string {
 
 const ROW_HEIGHT = 26;
 
-export function EventLog({ events }: { events: JobEvent[] }) {
+export function EventLog({
+  events,
+  active = true,
+}: {
+  events: JobEvent[];
+  /** False for finished jobs — flips the empty-state copy from "waiting". */
+  active?: boolean;
+}) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
 
@@ -107,7 +114,7 @@ export function EventLog({ events }: { events: JobEvent[] }) {
         {events.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <p className="font-mono text-xs text-muted">
-              Waiting for events…
+              {active ? "Waiting for events…" : "No events were recorded for this run."}
             </p>
           </div>
         ) : (

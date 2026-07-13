@@ -450,6 +450,28 @@ export interface QueueHealth {
   total_pending: number;
 }
 
+export interface WorkersHealth {
+  status: "ok" | "down";
+  up: boolean;
+  workers: string[];
+}
+
+/** Aggregated per-source activity for one job (GET /jobs/{id}/sources). */
+export interface SourceRunSummary {
+  source_name: string;
+  runs: number;
+  completed: number;
+  failed: number;
+  skipped: number;
+  in_progress: number;
+  records_found: number;
+  records_imported: number;
+  retries: number;
+  last_error: string | null;
+  first_started_at: string | null;
+  last_completed_at: string | null;
+}
+
 /* ── Google Sheets sync ──────────────────────────────────────────────── */
 
 export interface SheetsStatus {
@@ -1061,6 +1083,15 @@ export interface paths {
   };
   "/api/v1/queues/health": {
     get: { responses: { 200: Json<QueueHealth> } };
+  };
+  "/api/v1/workers/health": {
+    get: { responses: { 200: Json<WorkersHealth> } };
+  };
+  "/api/v1/jobs/{job_id}/sources": {
+    get: {
+      parameters: { path: { job_id: string } };
+      responses: { 200: Json<SourceRunSummary[]> };
+    };
   };
   "/api/v1/sheets/status": {
     get: { responses: { 200: Json<SheetsStatus> } };

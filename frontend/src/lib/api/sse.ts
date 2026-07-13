@@ -33,8 +33,17 @@ function isTerminalStage(stage: string | null): boolean {
 /**
  * Append an event to the capped events cache and patch the Job detail's
  * progress/status from the event's stage + payload. Idempotent on seq.
+ *
+ * `seed: true` (historical replay on mount) only appends to the events cache:
+ * the job detail is already fresh from useJob, and replaying a stored "done"
+ * event must not re-trigger the terminal invalidations on every page view.
  */
-function applyEvent(qc: QueryClient, jobId: string, ev: JobEvent) {
+function applyEvent(
+  qc: QueryClient,
+  jobId: string,
+  ev: JobEvent,
+  opts?: { seed?: boolean },
+) {
   // 1) Append to the capped events log.
   qc.setQueryData<JobEvent[]>(queryKeys.jobs.events(jobId), (prev) => {
     const list = prev ?? [];
@@ -45,6 +54,8 @@ function applyEvent(qc: QueryClient, jobId: string, ev: JobEvent) {
     const next = [...list, ev].sort((a, b) => a.seq - b.seq);
     return next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
   });
+
+  if (opts?.seed) return;
 
   // 2) Patch the Job detail's progress + status from stage/payload.
   qc.setQueryData<Job | undefined>(queryKeys.jobs.detail(jobId), (prev) => {
@@ -105,6 +116,35 @@ function applyEvent(qc: QueryClient, jobId: string, ev: JobEvent) {
 export function useJobStream(jobId: string | null | undefined, enabled = true) {
   const queryClient = useQueryClient();
 
+  // ── Seed stored events on mount, for ANY job status ──────────────────────
+  // Completed/failed jobs never open the live stream (enabled=false), but their
+  // events are persisted server-side — fetch them once so the Event Log and
+  // Stage Track render history instead of "Waiting for events…". Incremental
+  // via after_seq when the user watched part of the run live. All writes go
+  // through applyEvent's seq-dedupe, so a concurrent SSE stream can't race it.
+  useEffect(() => {
+    if (!jobId || typeof window === "undefined") return;
+    let cancelled = false;
+    const cached =
+      queryClient.getQueryData<JobEvent[]>(queryKeys.jobs.events(jobId)) ?? [];
+    const afterSeq = cached.length ? cached[cached.length - 1].seq : 0;
+    const url =
+      `${API_BASE}/jobs/${encodeURIComponent(jobId)}/events` +
+      `?format=json&after_seq=${afterSeq}`;
+    fetch(url, { credentials: "include", headers: { Accept: "application/json" } })
+      .then((res) => (res.ok ? (res.json() as Promise<JobEvent[]>) : []))
+      .then((rows) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        for (const row of rows) applyEvent(queryClient, jobId, row, { seed: true });
+      })
+      .catch(() => {
+        // Best-effort: live SSE/polling still covers active jobs.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, queryClient]);
+
   useEffect(() => {
     if (!jobId || !enabled || typeof window === "undefined") return;
 
@@ -142,7 +182,7 @@ export function useJobStream(jobId: string | null | undefined, enabled = true) {
     const poll = async () => {
       if (closed) return;
       try {
-        const url = `${base}?format=json&since=${lastSeq}`;
+        const url = `${base}?format=json&after_seq=${lastSeq}`;
         const res = await fetch(url, { credentials: "include" });
         if (res.ok) {
           const rows = (await res.json()) as JobEvent[];
@@ -162,7 +202,7 @@ export function useJobStream(jobId: string | null | undefined, enabled = true) {
     // ── SSE with backoff reconnect ─────────────────────────────────────
     const connect = () => {
       if (closed) return;
-      const url = lastSeq > 0 ? `${base}?since=${lastSeq}` : base;
+      const url = lastSeq > 0 ? `${base}?after_seq=${lastSeq}` : base;
       try {
         source = new EventSource(url, { withCredentials: true });
       } catch {

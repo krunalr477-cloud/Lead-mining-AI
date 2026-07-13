@@ -33,14 +33,17 @@ import {
   usePauseJob,
   useCancelJob,
   useQueueHealth,
+  useJobSources,
+  useWorkersHealth,
 } from "@/lib/api/hooks";
 import { useSession } from "@/lib/auth/session";
 import { formatNumber, formatDuration } from "@/lib/format";
 import { resolveStatus } from "@/lib/status";
 import type { JobStatus, JobTotals } from "@/lib/api/schema";
 import { StageTrack } from "./_components/StageTrack";
-import { QueueGrid } from "./_components/QueueGrid";
+import { PipelineActivity } from "./_components/PipelineActivity";
 import { EventLog } from "./_components/EventLog";
+import { VerificationNotice } from "./_components/VerificationNotice";
 
 /**
  * §20 Job Run Monitor — the live command view for a single mining run.
@@ -57,8 +60,13 @@ import { EventLog } from "./_components/EventLog";
 
 const ACTIVE: JobStatus[] = ["running", "queued", "paused"];
 
-/** Live-ticking elapsed clock; freezes when the run is no longer active. */
-function useElapsed(startedAt: string | null, active: boolean): number | null {
+/** Live-ticking elapsed clock while active; the authoritative
+ * completed_at − started_at duration once the run has finished. */
+function useElapsed(
+  startedAt: string | null,
+  completedAt: string | null,
+  active: boolean,
+): number | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active) return;
@@ -68,6 +76,11 @@ function useElapsed(startedAt: string | null, active: boolean): number | null {
   if (!startedAt) return null;
   const start = Date.parse(startedAt);
   if (!Number.isFinite(start)) return null;
+  if (completedAt) {
+    const end = Date.parse(completedAt);
+    if (Number.isFinite(end)) return Math.max(0, end - start);
+  }
+  if (!active) return null; // terminal without completed_at -> unknown ("—")
   return Math.max(0, now - start);
 }
 
@@ -125,10 +138,13 @@ export default function JobMonitorPage() {
   useJobStream(jobId, isActive);
   const events = useJobEvents(jobId);
 
-  // Queue health polls on its own interval; slow it once the run is done.
-  const { data: queues, isLoading: queuesLoading } = useQueueHealth(
-    isActive ? 4000 : 20000,
+  // Pipeline activity: per-source runs + worker liveness + queue backlog.
+  const { data: queues } = useQueueHealth(isActive ? 4000 : 60000);
+  const { data: sources, isLoading: sourcesLoading } = useJobSources(
+    jobId,
+    isActive ? 4000 : false,
   );
+  const { data: workers } = useWorkersHealth(isActive ? 10000 : 60000);
 
   const pause = usePauseJob();
   const cancel = useCancelJob();
@@ -137,7 +153,11 @@ export default function JobMonitorPage() {
 
   const canRun = session.can("job.run");
 
-  const elapsed = useElapsed(job?.started_at ?? null, isActive);
+  const elapsed = useElapsed(
+    job?.started_at ?? null,
+    job?.completed_at ?? null,
+    isActive,
+  );
   const eta = useMemo(
     () => estimateEta(elapsed, job?.progress_percent ?? 0),
     [elapsed, job?.progress_percent],
@@ -336,17 +356,25 @@ export default function JobMonitorPage() {
         </div>
       </Panel>
 
-      {/* ── QUEUE GRID + EVENT LOG ───────────────────────────────────── */}
+      <VerificationNotice totals={job?.totals_json} active={isActive} />
+
+      {/* ── PIPELINE ACTIVITY + EVENT LOG ────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <Panel>
           <PanelHeader>
-            <MicroLabel>Queue health</MicroLabel>
+            <MicroLabel>Pipeline activity</MicroLabel>
           </PanelHeader>
-          <QueueGrid data={queues} loading={queuesLoading} />
+          <PipelineActivity
+            sources={sources}
+            sourcesLoading={sourcesLoading}
+            workers={workers}
+            queues={queues}
+            jobStatus={status}
+          />
         </Panel>
 
         <Panel>
-          <EventLog events={events} />
+          <EventLog events={events} active={isActive} />
         </Panel>
       </div>
 

@@ -13,6 +13,7 @@ export const queryKeys = {
     results: (jobId: string, filters?: Record<string, unknown>) =>
       ["jobs", "results", jobId, filters ?? {}] as const,
     events: (jobId: string) => ["jobs", "events", jobId] as const,
+    sources: (jobId: string) => ["jobs", "sources", jobId] as const,
   },
 
   dashboard: {
@@ -44,6 +45,10 @@ export const queryKeys = {
       ["validation", "job", jobId, filters ?? {}] as const,
     byContact: (contactId: string) =>
       ["validation", "contact", contactId] as const,
+  },
+
+  workers: {
+    health: () => ["workers", "health"] as const,
   },
 
   queues: {

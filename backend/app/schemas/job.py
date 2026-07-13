@@ -112,6 +112,23 @@ class ComplianceWarning(BaseModel):
     message: str
 
 
+class SourceRunSummary(BaseModel):
+    """Aggregated per-source activity for one job (Pipeline Activity panel)."""
+
+    source_name: str
+    runs: int
+    completed: int
+    failed: int
+    skipped: int
+    in_progress: int
+    records_found: int
+    records_imported: int
+    retries: int
+    last_error: str | None = None
+    first_started_at: datetime | None = None
+    last_completed_at: datetime | None = None
+
+
 class JobEstimate(BaseModel):
     estimated_companies_min: int
     estimated_companies_max: int

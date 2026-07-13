@@ -18,17 +18,17 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from starlette.concurrency import run_in_threadpool
 
 from app.adapters.registry import get_registry
 from app.adapters.sources.google_maps import MAX_PAGES as _PLACES_MAX_PAGES
 from app.adapters.sources.google_maps import SEARCH_TEXT_UNIT_COST as _PLACES_UNIT_COST
 from app.config import get_settings
-from app.constants import JobStage, JobStatus, Posture, SourceName
+from app.constants import JobStage, JobStatus, Posture, SourceName, SourceRunStatus
 from app.db import utcnow
 from app.deps import CurrentUser, SessionDep, TenantId, require
-from app.models import Company, Contact, DataSourceConfig, MiningJob, Tenant
+from app.models import Company, Contact, DataSourceConfig, MiningJob, SourceRun, Tenant
 from app.schemas.company import CompanyOut
 from app.schemas.contact import ContactOut
 from app.schemas.job import (
@@ -38,6 +38,7 @@ from app.schemas.job import (
     JobListItem,
     JobOut,
     JobStartRequest,
+    SourceRunSummary,
 )
 from app.services.events import apublish_event
 
@@ -328,6 +329,70 @@ async def job_results(
         "companies": [CompanyOut.model_validate(c).model_dump() for c in companies],
         "contacts": [ContactOut.model_validate(c).model_dump() for c in contacts],
     }
+
+
+@router.get("/{job_id}/sources", response_model=list[SourceRunSummary])
+async def job_sources(
+    job_id: uuid.UUID,
+    _actor: ReadActor,
+    tenant_id: TenantId,
+    session: SessionDep,
+) -> list[SourceRunSummary]:
+    """Aggregated per-source activity for the Pipeline Activity panel — real
+    work counters from source_runs (one row per source, not per run; a single
+    job can log hundreds of per-company extract runs)."""
+    job = await _get_job(session, tenant_id, job_id)
+    rows = (
+        await session.execute(
+            select(
+                SourceRun.source_name,
+                func.count().label("runs"),
+                func.count().filter(SourceRun.status == SourceRunStatus.COMPLETED),
+                func.count().filter(SourceRun.status == SourceRunStatus.FAILED),
+                func.count().filter(SourceRun.status == SourceRunStatus.SKIPPED),
+                func.count().filter(
+                    SourceRun.status.in_(
+                        (SourceRunStatus.PENDING.value, SourceRunStatus.RUNNING.value)
+                    )
+                ),
+                func.coalesce(func.sum(SourceRun.records_found), 0),
+                func.coalesce(func.sum(SourceRun.records_imported), 0),
+                func.coalesce(func.sum(SourceRun.retry_count), 0),
+                func.min(SourceRun.started_at),
+                func.max(SourceRun.completed_at),
+            )
+            .where(SourceRun.job_id == job.id)
+            .group_by(SourceRun.source_name)
+            .order_by(SourceRun.source_name)
+        )
+    ).all()
+    # Most recent error per source (DISTINCT ON — Postgres).
+    error_rows = (
+        await session.execute(
+            select(SourceRun.source_name, SourceRun.error_message)
+            .where(SourceRun.job_id == job.id, SourceRun.error_message.is_not(None))
+            .order_by(SourceRun.source_name, SourceRun.created_at.desc())
+            .distinct(SourceRun.source_name)
+        )
+    ).all()
+    last_errors = dict(error_rows)
+    return [
+        SourceRunSummary(
+            source_name=r[0],
+            runs=r[1],
+            completed=r[2],
+            failed=r[3],
+            skipped=r[4],
+            in_progress=r[5],
+            records_found=int(r[6]),
+            records_imported=int(r[7]),
+            retries=int(r[8]),
+            last_error=last_errors.get(r[0]),
+            first_started_at=r[9],
+            last_completed_at=r[10],
+        )
+        for r in rows
+    ]
 
 
 @router.post("/estimate", response_model=JobEstimate)

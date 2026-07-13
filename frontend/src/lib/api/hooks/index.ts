@@ -37,6 +37,8 @@ export {
   useCampaignPerformance,
 } from "./useDashboard";
 export { useQueueHealth } from "./useQueues";
+export { useJobSources } from "./useJobSources";
+export { useWorkersHealth } from "./useWorkers";
 export {
   useSheetsStatus,
   useSheetsEvents,

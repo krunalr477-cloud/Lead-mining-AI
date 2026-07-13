@@ -33,3 +33,7 @@ backend/exports/
 .DS_Store
 .idea/
 .vscode/
+
+# Celery runtime state (beat scheduler DB — regenerated on each run)
+celerybeat-schedule*
+backend/celerybeat-schedule*

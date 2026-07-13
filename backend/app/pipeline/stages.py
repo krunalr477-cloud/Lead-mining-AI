@@ -13,6 +13,7 @@ the mock adapters, and every mock row is marked ``is_demo=True``.
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from decimal import Decimal
@@ -107,6 +108,7 @@ __all__ = [
     "run_discovery",
     "run_enrichment",
     "run_extraction",
+    "run_extraction_batch",
     "run_sync",
     "run_validation_for_candidate",
     "sync_company_row",
@@ -517,6 +519,105 @@ def run_extraction(
     company.last_refreshed_at = utcnow()
     session.flush()
     return {"contacts": contacts_added, "emails": emails_added, "signals": signals_added}
+
+
+def run_extraction_batch(
+    session: Session, redis_client: redis.Redis, job: MiningJob, companies: list[Company]
+) -> dict:
+    """Extract a batch of companies, crawling up to ``crawler_concurrency`` sites
+    concurrently (network phase) and applying DB writes sequentially.
+
+    Falls back to the plain sequential loop when concurrency is 1, the batch is
+    trivial, or optional signal sources are selected (those stay sequential —
+    rarely enabled and low volume). The crawl coroutines share one event loop on
+    one thread, so interleaved ``ctx.audit`` session writes stay single-threaded.
+    """
+    totals = {"contacts": 0, "emails": 0, "signals": 0}
+    if not companies:
+        return totals
+    concurrency = max(1, get_settings().crawler_concurrency)
+    has_signal_sources = any(
+        opt.value in (job.selected_sources or [])
+        for opt in (SourceName.FACEBOOK_SIGNALS, SourceName.SERP_JOBS)
+    )
+    if concurrency <= 1 or has_signal_sources or len(companies) <= 1:
+        for company in companies:
+            res = run_extraction(session, redis_client, job, company)
+            for k in totals:
+                totals[k] += res[k]
+        return totals
+
+    registry = get_registry()
+    configs = _source_configs(session, job.tenant_id)
+    name = SourceName.COMPANY_WEBSITES
+    cfg = configs.get(name.value)
+    resolved = registry.resolve_source(
+        name,
+        enabled=bool(cfg.enabled) if cfg else False,
+        signed_off=bool(cfg and cfg.signoff_at is not None),
+    )
+    if not resolved.ok:
+        return totals
+    adapter = resolved.adapter
+    assert adapter is not None
+
+    units: list[tuple[Company, CompanyRef, object]] = []
+    for company in companies:
+        ref = CompanyRef(
+            company_id=company.id,
+            name=company.canonical_name,
+            website=company.website,
+            domain=company.domain,
+            city=company.city,
+            country=company.country,
+        )
+        ctx = registry.build_context(
+            session=session,
+            redis_client=redis_client,
+            tenant_id=job.tenant_id,
+            job_id=job.id,
+            adapter=adapter,
+        )
+        ctx.open()
+        units.append((company, ref, ctx))
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _crawl_one(ref: CompanyRef, ctx) -> ExtractionResult | Exception:
+        async with semaphore:
+            try:
+                return await adapter.extract(ref, ctx)
+            except Exception as exc:  # noqa: BLE001 - one bad site must not kill the batch
+                return exc
+
+    async def _crawl_all() -> list[ExtractionResult | Exception]:
+        return await asyncio.gather(*[_crawl_one(ref, ctx) for _, ref, ctx in units])
+
+    results = run_async(_crawl_all())
+
+    # Apply phase: strictly sequential DB writes.
+    for (company, _ref, ctx), result in zip(units, results, strict=True):
+        if isinstance(result, Exception):
+            company.website_status = "unreachable"
+            ctx.finalize(SourceRunStatus.COMPLETED, records_found=0, records_imported=0)
+            continue
+        c_add, e_add = _apply_contacts(session, job, company, result, adapter.name.value)
+        totals["contacts"] += c_add
+        totals["emails"] += e_add
+        s_add = _apply_signals(session, company, result)
+        totals["signals"] += s_add
+        if c_add or e_add or s_add:
+            _ensure_crawl_source(session, company, name.value, company.website)
+        if result.website_status:
+            company.website_status = result.website_status
+        if s_add:
+            company.hiring_signal_status = "signals_found"
+        company.last_refreshed_at = utcnow()
+        ctx.finalize(
+            SourceRunStatus.COMPLETED, records_found=c_add + s_add, records_imported=c_add
+        )
+    session.flush()
+    return totals
 
 
 def _apply_contacts(

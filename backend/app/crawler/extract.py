@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -81,6 +82,34 @@ def _homepage(company: CompanyRef) -> str | None:
             host = host[4:]
         return f"https://{host}"
     return None
+
+
+def _homepage_candidates(company: CompanyRef) -> list[str]:
+    """Ordered homepage URL variants: the listed URL first, then the http/https
+    scheme swap and the www toggle. A DNS/connect failure on the exact listed URL
+    is often just a canonicalization quirk (https-only listing for an http-only
+    site, bare host vs www) — one cheap probe per variant recovers those."""
+    base = _homepage(company)
+    if not base:
+        return []
+    parsed = urlsplit(base)
+    scheme, host = parsed.scheme or "https", parsed.netloc
+    path = parsed.path or ""
+    alt_scheme = "http" if scheme == "https" else "https"
+    candidates = [base, f"{alt_scheme}://{host}{path}"]
+    hostname = host.rsplit(":", 1)[0]
+    is_ip = hostname.replace(".", "").isdigit()
+    if ":" not in host and not is_ip:  # www-toggle makes no sense for IPs/ports
+        toggled = host[4:] if host.startswith("www.") else f"www.{host}"
+        candidates.append(f"{scheme}://{toggled}{path}")
+        candidates.append(f"{alt_scheme}://{toggled}{path}")
+    seen: set[str] = set()
+    out: list[str] = []
+    for url in candidates:
+        if url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out[:4]
 
 
 def parse_page(url: str, html: str, *, country: str | None = None) -> PagePartial:
@@ -253,45 +282,107 @@ def _mint_role_contacts(emails: list[str], domain: str, url: str) -> list[Extrac
 
 
 async def crawl_company(company: CompanyRef, ctx: SourceRunContext) -> ExtractionResult:
-    """Crawl one company's website and return a merged ExtractionResult."""
-    homepage = _homepage(company)
-    if not homepage:
+    """Crawl one company's website and return a merged ExtractionResult.
+
+    The homepage is resolved across scheme/www variants with a retry ladder, so
+    a transient DNS blip or a canonicalization quirk doesn't permanently mark a
+    live site unreachable. A homepage exhausted on 403/503 (WAF block, even via
+    Playwright) is recorded as ``blocked`` — distinct from truly ``unreachable``.
+    """
+    candidates = _homepage_candidates(company)
+    if not candidates:
         return ExtractionResult(website_status="no_website", pages_crawled=[])
 
     settings = get_settings()
-    domain = registrable_domain(homepage)
-    site_domain = company.domain.lower() if company.domain else domain
     max_pages = settings.crawler_max_pages_per_domain
     budget = CrawlBudget(max_pages=max_pages)
-
-    from urllib.parse import urlparse
-
-    parsed = urlparse(homepage)
-    scheme, host = parsed.scheme or "https", parsed.netloc
 
     partials: list[PagePartial] = []
     pages_crawled: list[str] = []
     website_status = "ok"
     any_fetched = False
+    site_domain = company.domain.lower() if company.domain else ""
+
+    def _may_use_playwright() -> bool:
+        """Per-job Playwright budget (Redis counter; fail-open without Redis)."""
+        try:
+            key = f"job:{ctx.job_id}:pw_attempts"
+            n = int(ctx.redis.incr(key))
+            if n == 1:
+                ctx.redis.expire(key, 86_400)
+            return n <= settings.crawler_playwright_max_per_job
+        except Exception:
+            return True
 
     timeout = httpx.Timeout(15.0, connect=10.0)
+    fetcher: PageFetcher | None = None
     try:
         async with httpx.AsyncClient(
             http2=True, timeout=timeout, max_redirects=5, verify=True
         ) as client:
-            policy = await fetch_robots(client, scheme, host, ctx)
-            # Honor robots Crawl-delay (already capped at 10s) when it is stricter
-            # than our configured per-domain politeness delay (spec §8).
-            per_domain_delay = settings.crawler_per_domain_delay_seconds
-            if policy.crawl_delay is not None:
-                per_domain_delay = max(per_domain_delay, policy.crawl_delay)
-            fetcher = PageFetcher(client, per_domain_delay=per_domain_delay)
-            frontier = Frontier(seed_url=homepage, domain=domain)
+            # --- resolve a reachable homepage across URL variants ------------ #
+            homepage: str | None = None
+            policy = None
+            seed_result = None
+            last_error_kind: str | None = None
+            for idx, candidate in enumerate(candidates):
+                parsed = urlsplit(candidate)
+                pol = await fetch_robots(client, parsed.scheme or "https", parsed.netloc, ctx)
+                if not pol.allowed(candidate):
+                    # robots forbids the homepage — honor it; variants of the
+                    # same site would carry the same rules.
+                    ctx.audit(candidate, status="skipped_robots", records_found=0)
+                    last_error_kind = "robots"
+                    break
+                # Honor robots Crawl-delay (already capped at 10s) when stricter
+                # than our configured per-domain politeness delay (spec §8).
+                per_domain_delay = settings.crawler_per_domain_delay_seconds
+                if pol.crawl_delay is not None:
+                    per_domain_delay = max(per_domain_delay, pol.crawl_delay)
+                fetcher = PageFetcher(
+                    client,
+                    per_domain_delay=per_domain_delay,
+                    may_use_playwright=_may_use_playwright,
+                )
+                # Full retry ladder on the listed URL; single cheap probe per variant.
+                result = await fetcher.fetch(candidate, attempts=None if idx == 0 else 1)
+                budget.record()
+                if result.ok:
+                    homepage, policy, seed_result = candidate, pol, result
+                    if result.ssl_insecure:
+                        ctx.audit(candidate, status="ok_ssl_invalid", records_found=0)
+                    break
+                detail = f"{result.error_kind}: {result.error}" if result.error_kind else result.error
+                ctx.audit(candidate, status="error", error=(detail or "")[:200])
+                last_error_kind = result.error_kind
+                if result.error_kind not in ("dns", "connect"):
+                    break  # only DNS/connect failures justify probing URL variants
 
-            queue = [homepage]
+            if seed_result is None or homepage is None or policy is None:
+                status = "blocked" if last_error_kind in ("http_403", "http_503") else "unreachable"
+                return ExtractionResult(website_status=status, pages_crawled=[])
+
+            # --- crawl the site from the resolved homepage -------------------- #
+            domain = registrable_domain(homepage)
+            site_domain = company.domain.lower() if company.domain else domain
+            frontier = Frontier(seed_url=homepage, domain=domain)
+            frontier.mark_visited(homepage)
+            any_fetched = True
+            ctx.audit(f"tier{seed_result.tier}:{homepage}", status="ok", records_found=0)
+            partial = parse_page(homepage, seed_result.html, country=company.country)
+            partials.append(partial)
+            pages_crawled.append(homepage)
+            frontier.add_links(homepage, partial.links)
+            frontier.add_links(homepage, partial.footer_links, in_footer=True)
+
+            queue = [
+                link.url
+                for link in frontier.top(max(0, max_pages - budget.pages_fetched))
+                if link.score > 0
+            ]
             while queue and budget.can_fetch():
                 url = queue.pop(0)
-                if frontier.visited(url) and url != homepage:
+                if frontier.visited(url):
                     continue
 
                 if not policy.allowed(url):
@@ -299,17 +390,16 @@ async def crawl_company(company: CompanyRef, ctx: SourceRunContext) -> Extractio
                     frontier.mark_visited(url)
                     continue
 
-                result = await fetcher.fetch(url)
+                # Sub-pages: single attempt — the site is proven up, and a lost
+                # page shouldn't burn the retry ladder.
+                result = await fetcher.fetch(url, attempts=1)
                 budget.record()
                 frontier.mark_visited(url)
 
                 if not result.ok:
                     ctx.audit(url, status="error", error=result.error)
-                    if url == homepage:
-                        website_status = "unreachable"
                     continue
 
-                any_fetched = True
                 ctx.audit(
                     f"tier{result.tier}:{url}",
                     status="ok",
@@ -328,9 +418,12 @@ async def crawl_company(company: CompanyRef, ctx: SourceRunContext) -> Extractio
                         if link.score > 0 and link.url not in queue:
                             queue.append(link.url)
     except Exception as exc:  # defensive: a crawl error must not kill the job
-        ctx.audit(homepage, status="error", error=str(exc)[:200])
+        ctx.audit(candidates[0], status="error", error=str(exc)[:200])
         if not any_fetched:
             return ExtractionResult(website_status="unreachable", pages_crawled=pages_crawled)
+    finally:
+        if fetcher is not None:
+            await fetcher.aclose()
 
     if not any_fetched:
         website_status = "unreachable"

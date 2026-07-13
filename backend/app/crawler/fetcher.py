@@ -1,13 +1,22 @@
 """Tiered async page fetch (spec §8 "Playwright for website crawling where
 permitted", rate limits, caps).
 
-Tier 1 — httpx (HTTP/2, honest User-Agent, 15s timeout). Fast path for the
-static HTML the vast majority of firm sites serve.
+Tier 1 — httpx (HTTP/2, realistic browser User-Agent, 15s timeout), with a
+retry ladder for TRANSIENT failures (DNS/connect/timeout/SSL/403/503): a flaky
+network blip or a WAF challenge must not permanently mark a live site
+unreachable (a real run falsely failed 87% of sites this way). SSL verification
+failures get one retry through a verify=False client (recorded, not hidden).
 
-Tier 2 — Playwright Chromium, used ONLY when Tier-1 output looks empty
-(< 400 chars of visible text) or shows SPA markers (an app root with no server-
-rendered content). Guarded: if Playwright isn't installed / can't launch, we
-skip Tier 2 gracefully and return the Tier-1 result.
+Tier 2 — Playwright Chromium, used when Tier-1 output looks empty (< 400 chars
+of visible text / SPA markers) OR when Tier 1 exhausted its ladder on a hard
+failure — a real browser clears most WAF blocks. Budgeted per job via the
+caller-supplied ``may_use_playwright`` callable. Guarded: if Playwright isn't
+installed / can't launch, we skip Tier 2 gracefully.
+
+UA policy: robots.txt is fetched AND evaluated under the LeadMineBot token
+(compliance substance, see app/crawler/robots.py); page fetches use a standard
+browser UA (``settings.crawler_browser_user_agent``) because bot-labeled UAs
+are blanket-403'd by common hosts, which reads as false unreachability.
 
 Politeness / safety:
 - per-domain Redis token bucket ``rl:domain:{domain}`` at
@@ -20,13 +29,13 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import httpx
 
 from app.config import get_settings
-from app.crawler.robots import USER_AGENT
 from app.workers.rate_limit import bucket_for_domain
 
 __all__ = ["FetchResult", "CrawlBudget", "PageFetcher", "playwright_available"]
@@ -45,6 +54,16 @@ _MIN_TEXT_CHARS = 400
 _DEFAULT_BUDGET_SECONDS = 120.0
 _RL_MAX_WAIT = 15.0  # never block a single fetch longer than this on the bucket
 
+# Failure kinds worth retrying: network blips and WAF-ish statuses.
+_TRANSIENT_KINDS = frozenset(
+    {"dns", "connect", "timeout", "ssl", "http_403", "http_503", "http_429", "http_5xx"}
+)
+# Kinds a REAL BROWSER can plausibly clear (WAF/bot blocks). DNS/connect
+# failures would fail identically in Chromium — don't burn a launch on them.
+_BROWSER_CLEARABLE_KINDS = frozenset({"http_403", "http_503", "http_429", "http_5xx"})
+# Backoff before retry attempt N+1 (tests may monkeypatch to zeros).
+_RETRY_BACKOFFS = (1.0, 3.0)
+
 
 @dataclass(slots=True)
 class FetchResult:
@@ -56,6 +75,28 @@ class FetchResult:
     ok: bool
     error: str | None = None
     escalated: bool = False
+    # Classified failure kind (see _TRANSIENT_KINDS + http_4xx/non_html/playwright).
+    error_kind: str | None = None
+    # True when the page was only reachable with SSL verification disabled.
+    ssl_insecure: bool = False
+
+
+def _classify_httpx_error(exc: httpx.HTTPError) -> str:
+    """Bucket an httpx exception into a retry-relevant failure kind."""
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    text = " ".join(str(part) for part in (exc, exc.__cause__ or "")).lower()
+    if "certificate" in text or "ssl" in text or "tls" in text:
+        return "ssl"
+    if (
+        "nodename nor servname" in text
+        or "name or service not known" in text
+        or "getaddrinfo" in text
+        or "temporary failure in name resolution" in text
+        or "name resolution" in text
+    ):
+        return "dns"
+    return "connect"
 
 
 def playwright_available() -> bool:
@@ -114,6 +155,8 @@ class PageFetcher:
         *,
         per_domain_delay: float | None = None,
         allow_playwright: bool = True,
+        may_use_playwright: Callable[[], bool] | None = None,
+        insecure_client: httpx.AsyncClient | None = None,
     ) -> None:
         settings = get_settings()
         self.client = client
@@ -123,6 +166,29 @@ class PageFetcher:
             else settings.crawler_per_domain_delay_seconds
         )
         self.allow_playwright = allow_playwright
+        # Per-job Playwright budget hook (Redis counter lives with the caller so
+        # the fetcher stays transport-only). None => unbudgeted.
+        self.may_use_playwright = may_use_playwright or (lambda: True)
+        self._insecure_client = insecure_client
+        self._owns_insecure_client = insecure_client is None
+
+    def _insecure(self) -> httpx.AsyncClient:
+        """Lazily-built verify=False client for the one-shot SSL-error retry."""
+        if self._insecure_client is None:
+            self._insecure_client = httpx.AsyncClient(
+                http2=True,
+                timeout=httpx.Timeout(_TIER1_TIMEOUT, connect=10.0),
+                max_redirects=5,
+                verify=False,
+            )
+        return self._insecure_client
+
+    async def aclose(self) -> None:
+        """Close the lazily-created insecure client (the main client is owned by
+        the caller's context manager)."""
+        if self._owns_insecure_client and self._insecure_client is not None:
+            await self._insecure_client.aclose()
+            self._insecure_client = None
 
     async def _throttle(self, domain: str) -> None:
         """Block on the per-domain Redis token bucket (bounded wait)."""
@@ -140,37 +206,80 @@ class PageFetcher:
             if waited >= _RL_MAX_WAIT:
                 break
 
-    async def fetch(self, url: str) -> FetchResult:
-        """Fetch one page (Tier 1, escalating to Tier 2 when warranted)."""
+    async def fetch(self, url: str, *, attempts: int | None = None) -> FetchResult:
+        """Fetch one page through the retry ladder, escalating to Tier 2 when
+        warranted (thin content on success, or a hard failure a real browser
+        might clear). ``attempts`` overrides the configured ladder length —
+        callers pass 1 for cheap probes (URL variants, sub-pages)."""
         domain = urlparse(url).netloc.lower()
         await self._throttle(domain)
 
-        tier1 = await self._fetch_httpx(url)
-        if not tier1.ok:
-            # Nothing to escalate from on a hard failure.
-            return tier1
+        max_attempts = (
+            attempts if attempts is not None else max(1, get_settings().crawler_fetch_attempts)
+        )
+        result: FetchResult | None = None
+        for attempt in range(max_attempts):
+            result = await self._fetch_httpx(url)
+            if result.ok:
+                break
+            if result.error_kind == "ssl":
+                # One shot through the verify=False client: many small-firm sites
+                # have expired/mismatched certs that browsers click through.
+                insecure = await self._fetch_httpx(url, insecure=True)
+                if insecure.ok:
+                    insecure.ssl_insecure = True
+                    result = insecure
+                    break
+            if result.error_kind not in _TRANSIENT_KINDS:
+                break
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(_RETRY_BACKOFFS[min(attempt, len(_RETRY_BACKOFFS) - 1)])
 
-        if self.allow_playwright and _needs_escalation(tier1.html):
+        assert result is not None  # max_attempts >= 1
+
+        if result.ok:
+            if self.allow_playwright and _needs_escalation(result.html) and self.may_use_playwright():
+                tier2 = await self._fetch_playwright(url)
+                if tier2 is not None and tier2.ok and tier2.text_len > result.text_len:
+                    tier2.escalated = True
+                    return tier2
+                result.escalated = True  # we tried; record the attempt
+            return result
+
+        # Hard failure after the ladder: a real browser clears most WAF blocks
+        # (403/503/429) — final budgeted attempt. DNS/connect failures are not
+        # escalated: Chromium shares the same network and would fail identically.
+        if (
+            self.allow_playwright
+            and result.error_kind in _BROWSER_CLEARABLE_KINDS
+            and self.may_use_playwright()
+        ):
             tier2 = await self._fetch_playwright(url)
-            if tier2 is not None and tier2.ok and tier2.text_len > tier1.text_len:
+            if tier2 is not None and tier2.ok:
                 tier2.escalated = True
                 return tier2
-            tier1.escalated = True  # we tried; record the attempt
-        return tier1
+        return result
 
-    async def _fetch_httpx(self, url: str) -> FetchResult:
+    async def _fetch_httpx(self, url: str, *, insecure: bool = False) -> FetchResult:
+        client = self._insecure() if insecure else self.client
         try:
-            resp = await self.client.get(
+            resp = await client.get(
                 url,
-                headers={"User-Agent": USER_AGENT},
+                headers={"User-Agent": get_settings().crawler_browser_user_agent},
                 follow_redirects=True,
             )
         except httpx.HTTPError as exc:
-            return FetchResult(url, 0, "", 0, tier=0, ok=False, error=str(exc)[:200])
+            kind = _classify_httpx_error(exc)
+            return FetchResult(
+                url, 0, "", 0, tier=0, ok=False, error=str(exc)[:200], error_kind=kind
+            )
 
         ctype = resp.headers.get("content-type", "")
         if "html" not in ctype and ctype:
-            return FetchResult(url, resp.status_code, "", 0, tier=1, ok=False, error="non-html")
+            return FetchResult(
+                url, resp.status_code, "", 0, tier=1, ok=False, error="non-html",
+                error_kind="non_html",
+            )
 
         raw = resp.content[:_MAX_HTML_BYTES]
         try:
@@ -178,6 +287,14 @@ class PageFetcher:
         except (LookupError, ValueError):
             html = raw.decode("utf-8", errors="replace")
         ok = 200 <= resp.status_code < 300
+        if ok:
+            error_kind = None
+        elif resp.status_code in (403, 503, 429):
+            error_kind = f"http_{resp.status_code}"
+        elif resp.status_code >= 500:
+            error_kind = "http_5xx"
+        else:
+            error_kind = "http_4xx"
         return FetchResult(
             url,
             resp.status_code,
@@ -186,6 +303,7 @@ class PageFetcher:
             tier=1,
             ok=ok,
             error=None if ok else f"http_{resp.status_code}",
+            error_kind=error_kind,
         )
 
     async def _fetch_playwright(self, url: str) -> FetchResult | None:
@@ -207,7 +325,9 @@ class PageFetcher:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(headless=True)
                 try:
-                    page = await browser.new_page(user_agent=USER_AGENT)
+                    # Chromium's own UA — a real browser fingerprint clears WAFs
+                    # that blanket-block labeled bots.
+                    page = await browser.new_page()
                     await page.goto(
                         url, timeout=int(_TIER1_TIMEOUT * 1000), wait_until="networkidle"
                     )
@@ -216,7 +336,8 @@ class PageFetcher:
                     await browser.close()
         except Exception as exc:  # launch/nav failure => graceful skip
             return FetchResult(
-                url, 0, "", 0, tier=0, ok=False, error=f"playwright: {str(exc)[:150]}"
+                url, 0, "", 0, tier=0, ok=False,
+                error=f"playwright: {str(exc)[:150]}", error_kind="playwright",
             )
         html = html[:_MAX_HTML_BYTES]
         return FetchResult(url, 200, html, _visible_text_len(html), tier=2, ok=True, error=None)

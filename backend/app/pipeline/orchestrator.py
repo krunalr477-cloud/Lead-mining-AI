@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 import structlog
 from sqlalchemy import func, select
 
+from app.config import get_settings
 from app.constants import EnrichmentStatus, FinalEmailStatus, JobStage, JobStatus
 from app.db import sync_session_factory, utcnow
 from app.models import Company, Contact, EmailCandidate, MiningJob, SalesReadyLead
@@ -197,14 +198,11 @@ def run_job_inline(job_id: uuid.UUID, *, session: Session | None = None) -> dict
         session.commit()
         _guard_cancel(session, redis_client, job)
 
-        # --- extraction (per company) ---
+        # --- extraction (per company, batched crawl + second pass) ---
         _enter_stage(session, job, JobStage.EXTRACTING)
         companies = session.scalars(select(Company).where(Company.job_id == job.id)).all()
-        ex_totals = {"contacts": 0, "emails": 0, "signals": 0}
-        for company in companies:
-            res = stages.run_extraction(session, redis_client, job, company)
-            for k in ex_totals:
-                ex_totals[k] += res[k]
+        ex_totals = stages.run_extraction_batch(session, redis_client, job, companies)
+        _second_pass_extraction(session, redis_client, job)
         summary["extraction"] = ex_totals
         _finish_stage(session, job, JobStage.EXTRACTING)
         session.commit()
@@ -316,10 +314,44 @@ def _step_discovery(session: Session, redis_client: redis.Redis, job: MiningJob)
     stages.run_discovery(session, redis_client, job)
 
 
+def _second_pass_extraction(
+    session: Session, redis_client: redis.Redis, job: MiningJob
+) -> None:
+    """Re-crawl sites still 'unreachable' after the first extraction pass. A
+    transient network window (flaky DNS, a dropped uplink) can fail dozens of
+    live sites in a row; one bounded retry at the end of the stage recovers
+    them. 'blocked' (WAF 403/503) sites are NOT retried — a block won't heal in
+    five minutes."""
+    settings = get_settings()
+    if not settings.crawler_second_pass_enabled:
+        return
+    retry = session.scalars(
+        select(Company)
+        .where(Company.job_id == job.id, Company.website_status == "unreachable")
+        .limit(settings.crawler_second_pass_max)
+    ).all()
+    if not retry:
+        return
+    stages.run_extraction_batch(session, redis_client, job, retry)
+    recovered = sum(1 for c in retry if c.website_status == "ok")
+    publish_event(
+        session,
+        tenant_id=job.tenant_id,
+        job_id=job.id,
+        stage=JobStage.EXTRACTING,
+        level="info",
+        message=(
+            f"Second-pass recrawl: retried {len(retry)} unreachable sites, "
+            f"recovered {recovered}."
+        ),
+    )
+
+
 def _step_extraction(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
     _enter_stage(session, job, JobStage.EXTRACTING)
-    for company in session.scalars(select(Company).where(Company.job_id == job.id)).all():
-        stages.run_extraction(session, redis_client, job, company)
+    companies = session.scalars(select(Company).where(Company.job_id == job.id)).all()
+    stages.run_extraction_batch(session, redis_client, job, companies)
+    _second_pass_extraction(session, redis_client, job)
 
 
 def _step_enrichment(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:

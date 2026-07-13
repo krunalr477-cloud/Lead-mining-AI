@@ -28,15 +28,18 @@ FIXTURE_SITE = Path(__file__).resolve().parents[1] / "fixtures" / "site"
 
 @pytest.fixture(autouse=True)
 def _fast_crawl(monkeypatch):
-    """Drop the per-domain politeness delay to 0 so the localhost crawl is fast.
+    """Drop the per-domain politeness delay + retry backoffs to ~0 so localhost
+    crawls (and dead-site ladders) are fast.
 
     The rate-limiting path itself is exercised by tests/unit/test_rate_limit.py;
     here we only care about fetch/parse/robots behavior, not wall-clock delay.
     """
+    import app.crawler.fetcher as fetcher_mod
     from app.config import get_settings
 
     settings = get_settings()
     monkeypatch.setattr(settings, "crawler_per_domain_delay_seconds", 0.01, raising=False)
+    monkeypatch.setattr(fetcher_mod, "_RETRY_BACKOFFS", (0.0, 0.0))
 
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):

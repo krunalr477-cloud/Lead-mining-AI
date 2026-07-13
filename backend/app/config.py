@@ -78,6 +78,21 @@ class Settings(BaseSettings):
     # Crawler
     crawler_max_pages_per_domain: int = 8
     crawler_per_domain_delay_seconds: float = 2.0
+    # Fetch resilience (Batch 7): transient failures (DNS/connect/timeout/SSL/
+    # 403/503) retry with backoff instead of permanently marking a live site
+    # unreachable; page fetches use a realistic browser UA (robots.txt is still
+    # evaluated under the LeadMineBot token); Playwright escalates on hard
+    # failures under a per-job budget; still-unreachable sites get one second
+    # pass at the end of extraction.
+    crawler_fetch_attempts: int = 3
+    crawler_browser_user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    )
+    crawler_playwright_max_per_job: int = 25
+    crawler_second_pass_enabled: bool = True
+    crawler_second_pass_max: int = 60
+    crawler_concurrency: int = 4
 
     # Sheets sync
     sheets_writes_per_minute: int = 50

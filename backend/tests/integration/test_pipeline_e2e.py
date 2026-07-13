@@ -664,3 +664,83 @@ def test_cleanup_mock_directories(session: Session):
         if t is not None:
             session.delete(t)
             session.commit()
+
+
+def test_concurrent_extraction_matches_sequential(session: Session, monkeypatch):
+    """Batch 7.4: crawler_concurrency>1 must produce the same rows as sequential
+    (the mock adapters are pure async functions, gather-safe)."""
+    from app.config import get_settings as _gs
+
+    monkeypatch.setattr("app.adapters.mock.google_maps.MAPS_DEMO_LIMIT", SMALL_COMPANY_TARGET)
+    monkeypatch.setattr(
+        "app.adapters.mock.directories.MockDirectoriesAdapter.discover", _no_directory_discover
+    )
+    monkeypatch.setattr(_gs(), "crawler_concurrency", 3, raising=False)
+    tenant, user = _make_tenant(session)
+    job = _make_job(session, tenant, user)
+    session.commit()
+    tid = tenant.id
+    try:
+        run_job_inline(job.id, session=session)
+        session.commit()
+        session.refresh(job)
+        assert job.status == JobStatus.COMPLETED
+        companies = session.scalar(
+            select(func.count()).select_from(Company).where(Company.job_id == job.id)
+        )
+        contacts = session.scalar(
+            select(func.count()).select_from(Contact).where(Contact.job_id == job.id)
+        )
+        # Same invariants the sequential e2e asserts.
+        assert companies == SMALL_COMPANY_TARGET
+        assert contacts >= companies
+    finally:
+        session.rollback()
+        session.delete(session.get(Tenant, tid))
+        session.commit()
+
+
+def test_second_pass_recovers_unreachable(session: Session, monkeypatch):
+    """Batch 7.4: companies left 'unreachable' get one end-of-stage recrawl; a
+    recovery event is published. 'blocked' companies are not retried."""
+    from app.pipeline import stages as stages_mod
+    from app.pipeline.orchestrator import _second_pass_extraction
+
+    tenant, user = _make_tenant(session)
+    job = _make_job(session, tenant, user)
+    down = Company(
+        tenant_id=tenant.id, job_id=job.id, canonical_name="Flaky Site Co",
+        domain="flaky.example", website="https://flaky.example", website_status="unreachable",
+    )
+    walled = Company(
+        tenant_id=tenant.id, job_id=job.id, canonical_name="Walled Co",
+        domain="walled.example", website="https://walled.example", website_status="blocked",
+    )
+    session.add_all([down, walled])
+    session.commit()
+    tid = tenant.id
+
+    retried_ids = []
+
+    def _fake_batch(sess, r, j, companies):
+        for c in companies:
+            retried_ids.append(c.id)
+            c.website_status = "ok"  # simulates a successful recrawl
+        return {"contacts": 0, "emails": 0, "signals": 0}
+
+    monkeypatch.setattr(stages_mod, "run_extraction_batch", _fake_batch)
+    try:
+        _second_pass_extraction(session, get_redis(), job)
+        assert retried_ids == [down.id]  # unreachable retried, blocked skipped
+        session.refresh(down)
+        assert down.website_status == "ok"
+        from app.models import JobEvent
+
+        msg = session.scalars(
+            select(JobEvent.message).where(JobEvent.job_id == job.id)
+        ).all()
+        assert any("Second-pass recrawl" in m and "recovered 1" in m for m in msg)
+    finally:
+        session.rollback()
+        session.delete(session.get(Tenant, tid))
+        session.commit()

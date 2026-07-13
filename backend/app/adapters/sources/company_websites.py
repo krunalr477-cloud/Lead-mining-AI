@@ -46,9 +46,10 @@ class CompanyWebsitesAdapter(SourceAdapter):
     requires_signoff = False
     required_credentials: list[str] = []
     legal_note = (
-        "Polite crawl of public company pages only. Honors robots.txt, uses an "
-        "honest User-Agent (LeadMineBot/1.0), per-domain rate limits, and page/"
-        "time caps. No authenticated or private content."
+        "Polite crawl of public company pages only. robots.txt is honored under "
+        "the LeadMineBot token; page fetches use a standard browser User-Agent "
+        "(bot-labeled UAs are blanket-blocked by common hosts). Per-domain rate "
+        "limits and page/time caps apply. No authenticated or private content."
     )
 
     async def discover(

@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 import structlog
 from sqlalchemy import func, select
 
-from app.constants import FinalEmailStatus, JobStage, JobStatus
+from app.constants import EnrichmentStatus, FinalEmailStatus, JobStage, JobStatus
 from app.db import sync_session_factory, utcnow
 from app.models import Company, Contact, EmailCandidate, MiningJob, SalesReadyLead
 from app.pipeline import stages
@@ -212,13 +212,7 @@ def run_job_inline(job_id: uuid.UUID, *, session: Session | None = None) -> dict
 
         # --- enrichment (contacts missing email) ---
         _enter_stage(session, job, JobStage.ENRICHING)
-        needy = session.scalars(
-            select(Contact).where(Contact.job_id == job.id, Contact.email.is_(None))
-        ).all()
-        enriched = 0
-        for contact in needy:
-            enriched += stages.run_enrichment(session, redis_client, job, contact)["enriched"]
-        summary["enrichment"] = {"enriched": enriched}
+        summary["enrichment"] = _run_enrichment_stage(session, redis_client, job)
         _finish_stage(session, job, JobStage.ENRICHING)
         session.commit()
         _guard_cancel(session, redis_client, job)
@@ -263,6 +257,60 @@ def run_job_inline(job_id: uuid.UUID, *, session: Session | None = None) -> dict
 # whose finish_progress the job hasn't reached yet, commits after each, and is
 # therefore resumable — a re-delivered task skips completed steps instead of
 # re-running priced discovery/enrichment (fixes the double-discovery bug).
+def _run_enrichment_stage(
+    session: Session, redis_client: redis.Redis, job: MiningJob
+) -> dict:
+    """Enrich every email-less contact, then retry once any lookups the provider
+    rate-limited (deferred as PENDING). Shared by the inline and broker drivers."""
+    needy = session.scalars(
+        select(Contact).where(Contact.job_id == job.id, Contact.email.is_(None))
+    ).all()
+    enriched = 0
+    deferred = 0
+    for contact in needy:
+        res = stages.run_enrichment(session, redis_client, job, contact)
+        enriched += res["enriched"]
+        deferred += res.get("deferred", 0)
+
+    if deferred:
+        publish_event(
+            session,
+            tenant_id=job.tenant_id,
+            job_id=job.id,
+            stage=JobStage.ENRICHING,
+            level="warning",
+            message=f"Enrichment provider rate-limited — {deferred} lookups deferred; retrying.",
+        )
+        retry = session.scalars(
+            select(Contact).where(
+                Contact.job_id == job.id,
+                Contact.email.is_(None),
+                Contact.enrichment_status == EnrichmentStatus.PENDING,
+            )
+        ).all()
+        recovered = 0
+        still_deferred = 0
+        for contact in retry:
+            res = stages.run_enrichment(session, redis_client, job, contact)
+            enriched += res["enriched"]
+            recovered += res["enriched"]
+            still_deferred += res.get("deferred", 0)
+        publish_event(
+            session,
+            tenant_id=job.tenant_id,
+            job_id=job.id,
+            stage=JobStage.ENRICHING,
+            level="warning" if still_deferred else "info",
+            message=(
+                f"Enrichment retry pass: recovered {recovered}, "
+                f"{still_deferred} still deferred (will stay pending)."
+            ),
+        )
+        deferred = still_deferred
+
+    return {"enriched": enriched, "deferred": deferred}
+
+
 def _step_discovery(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
     _enter_stage(session, job, JobStage.DISCOVERING)
     stages.run_discovery(session, redis_client, job)
@@ -276,10 +324,7 @@ def _step_extraction(session: Session, redis_client: redis.Redis, job: MiningJob
 
 def _step_enrichment(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:
     _enter_stage(session, job, JobStage.ENRICHING)
-    for contact in session.scalars(
-        select(Contact).where(Contact.job_id == job.id, Contact.email.is_(None))
-    ).all():
-        stages.run_enrichment(session, redis_client, job, contact)
+    _run_enrichment_stage(session, redis_client, job)
 
 
 def _step_validation(session: Session, redis_client: redis.Redis, job: MiningJob) -> None:

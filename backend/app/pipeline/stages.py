@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import String, func, select
 from sqlalchemy import inspect as sa_inspect
 
+from app.adapters._http import ProviderRateLimited
 from app.adapters.base import CompanyRef, DiscoveredCompany, ExtractionResult
 from app.adapters.registry import get_registry
 from app.constants import (
@@ -80,7 +81,10 @@ def _gate_provider(
     """Pace outbound provider calls through a per-tenant token bucket so a burst
     of enrichment/validation lookups can't hammer a provider into 429s (spec §P7).
     Best-effort: if Redis or the bucket is unavailable, proceed without gating
-    rather than stalling the pipeline."""
+    rather than stalling the pipeline. Demo mode is never gated — mock adapters
+    touch no network, and pacing them only slows the demo/test pipeline."""
+    if get_settings().demo_mode:
+        return
     try:
         bucket = TokenBucket(
             redis_client,
@@ -709,19 +713,28 @@ def run_enrichment(
         adapter.provider or "enrichment",
         get_settings().enrichment_lookups_per_minute,
     )
-    results = run_async(
-        adapter.enrich(
-            company_name=company.canonical_name if company else "",
-            domain=company.domain if company else None,
-            website=company.website if company else None,
-            person_name=contact.full_name,
-            designation=contact.designation,
-            location=contact.city
-            if hasattr(contact, "city")
-            else (company.city if company else None),
-            ctx=ctx,
+    try:
+        results = run_async(
+            adapter.enrich(
+                company_name=company.canonical_name if company else "",
+                domain=company.domain if company else None,
+                website=company.website if company else None,
+                person_name=contact.full_name,
+                designation=contact.designation,
+                location=contact.city
+                if hasattr(contact, "city")
+                else (company.city if company else None),
+                ctx=ctx,
+            )
         )
-    )
+    except ProviderRateLimited:
+        # Provider throttled every attempt — DEFER, don't write the contact off.
+        # PENDING keeps it eligible for the end-of-stage retry pass (and any
+        # later run); NO_RESULT would have permanently recorded "no data".
+        contact.enrichment_status = EnrichmentStatus.PENDING
+        ctx.finalize(SourceRunStatus.COMPLETED, records_found=0, records_imported=0)
+        session.flush()
+        return {"enriched": 0, "deferred": 1}
     enriched = 0
     for ec in results:
         if ec.email:
@@ -747,6 +760,14 @@ def run_enrichment(
 # --------------------------------------------------------------------------- #
 # Validation (VALIDATING) — one email candidate at a time
 # --------------------------------------------------------------------------- #
+
+
+def _job_validation_stages(job: MiningJob) -> frozenset[str]:
+    """The job's selected validation stages from its creation options. Empty set
+    means "all stages" (the default and the shape for jobs created before the
+    option was honored)."""
+    raw = ((job.totals_json or {}).get("job_options") or {}).get("validation_stages") or []
+    return frozenset(str(s).strip().lower() for s in raw if str(s).strip())
 
 
 def validate_all_pending(session: Session, redis_client: redis.Redis, job: MiningJob) -> dict:
@@ -817,17 +838,25 @@ def run_validation_for_candidate(
     ctx.open()
     if not hard_failed:
         settings = get_settings()
-        _gate_provider(redis_client, job.tenant_id, "llm", settings.llm_scores_per_minute)
-        scored = run_async(registry.scorer_adapter().score([email], ctx))
-        if scored:
-            _, llm_score, llm_reason = scored[0]
-        _gate_provider(
-            redis_client, job.tenant_id, "verifier", settings.verifier_checks_per_minute
-        )
-        raw_status, mv_payload = run_async(registry.verifier_adapter().verify(email, ctx))
-        from app.constants import MillionVerifierStatus
+        # Honor the job's validation_stages selection for the two paid/external
+        # stages. syntax/disposable/role_based/mx are cheap local hard gates and
+        # always run. An empty/absent selection means ALL stages (the default).
+        selected_stages = _job_validation_stages(job)
+        llm_on = not selected_stages or "llm" in selected_stages
+        mv_on = not selected_stages or "millionverifier" in selected_stages
+        if llm_on:
+            _gate_provider(redis_client, job.tenant_id, "llm", settings.llm_scores_per_minute)
+            scored = run_async(registry.scorer_adapter().score([email], ctx))
+            if scored:
+                _, llm_score, llm_reason = scored[0]
+        if mv_on:
+            _gate_provider(
+                redis_client, job.tenant_id, "verifier", settings.verifier_checks_per_minute
+            )
+            raw_status, mv_payload = run_async(registry.verifier_adapter().verify(email, ctx))
+            from app.constants import MillionVerifierStatus
 
-        mv_status = MillionVerifierStatus(raw_status)
+            mv_status = MillionVerifierStatus(raw_status)
     ctx.finalize(SourceRunStatus.COMPLETED, records_found=1, records_imported=1)
 
     suppressed = _is_suppressed(session, job.tenant_id, email, domain)

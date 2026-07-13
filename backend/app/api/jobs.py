@@ -361,14 +361,34 @@ async def estimate_job(
     }
     warnings: list[ComplianceWarning] = []
     est_companies = 0
+    contributing: set[str] = set()  # sources that will actually run and yield rows
     for src in selected:
         try:
             name = SourceName(src)
         except ValueError:
             continue
         card = registry.adapter_card(name)
-        if name.value in per_source:
+        cfg = configs.get(name.value)
+        resolved = registry.resolve_source(
+            name,
+            enabled=bool(cfg.enabled) if cfg else False,
+            signed_off=bool(cfg and cfg.signoff_at is not None),
+        )
+        # A source that won't run contributes 0 companies — the estimate must not
+        # promise yield from a source the pipeline is going to skip (directories
+        # previously added a fictional 160 while having no live adapter).
+        if resolved.ok and name.value in per_source:
             est_companies += per_source[name.value]
+            contributing.add(name.value)
+        if not resolved.ok and card.posture == Posture.GREEN:
+            reason = resolved.unavailable.reason if resolved.unavailable else "unavailable"
+            warnings.append(
+                ComplianceWarning(
+                    source=name.value,
+                    posture="warning",
+                    message=f"{name.value} will be skipped in this run: {reason}.",
+                )
+            )
         if name == SourceName.GOOGLE_MAPS:
             warnings.append(
                 ComplianceWarning(
@@ -383,12 +403,6 @@ async def estimate_job(
                 )
             )
         if card.posture != Posture.GREEN:
-            cfg = configs.get(name.value)
-            resolved = registry.resolve_source(
-                name,
-                enabled=bool(cfg.enabled) if cfg else False,
-                signed_off=bool(cfg and cfg.signoff_at is not None),
-            )
             reason = (
                 resolved.unavailable.reason
                 if resolved.unavailable
@@ -402,8 +416,11 @@ async def estimate_job(
                 )
             )
 
-    # ~40% dedupe overlap when both maps + directories are selected.
-    if SourceName.GOOGLE_MAPS.value in selected and SourceName.DIRECTORIES.value in selected:
+    # ~40% dedupe overlap when both maps + directories actually contribute.
+    if (
+        SourceName.GOOGLE_MAPS.value in contributing
+        and SourceName.DIRECTORIES.value in contributing
+    ):
         est_companies = int(est_companies * 0.78)
     est_low = int(est_companies * 0.85)
     est_high = int(est_companies * 1.1)

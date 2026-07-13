@@ -45,12 +45,15 @@ def default_validation_rules() -> dict:
     """Spec §11 defaults; every key is tenant-editable from Validation Rules Settings."""
     return {
         "llm_threshold": 0.55,
-        "llm_mode": "adjudicate",
+        # "advisory" (score is informational) — the previously-seeded "adjudicate"
+        # is not a valid mode and was silently coerced to advisory anyway.
+        "llm_mode": "advisory",
         "role_keywords": list(DEFAULT_ROLE_KEYWORDS),
         "allow_role_based": False,
         "catch_all_policy": "review",
         "risk_policy": "review",
-        "unknown_retry": 1,
+        # Matches the UNKNOWN_RETRY beat defaults (workers/tasks/validation.py).
+        "unknown_retry": {"max_attempts": 3, "delay_hours": 6},
     }
 
 

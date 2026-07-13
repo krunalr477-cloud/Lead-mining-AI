@@ -64,7 +64,9 @@ def test_google_maps_real_when_key_present(registry, monkeypatch):
     assert isinstance(resolved.adapter, GoogleMapsAdapter)
 
 
-def test_google_maps_mock_when_no_key(registry, monkeypatch):
+def test_google_maps_skipped_when_no_key_in_real_mode(registry, monkeypatch):
+    """A real run without a key must SKIP the source — never silently serve mock
+    (fabricated) data into a real tenant. Demo mode still gets the mock."""
     monkeypatch.setenv("DEMO_MODE", "false")
     monkeypatch.setenv("ADAPTER_MODE", "auto")
     monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "")
@@ -72,8 +74,10 @@ def test_google_maps_mock_when_no_key(registry, monkeypatch):
 
     resolved = registry.resolve_source(SourceName.GOOGLE_MAPS, enabled=True, signed_off=True)
 
-    assert resolved.ok
-    assert isinstance(resolved.adapter, MockGoogleMapsAdapter)
+    assert not resolved.ok
+    assert resolved.adapter is None
+    assert resolved.unavailable is not None
+    assert "no live adapter" in resolved.unavailable.reason
 
 
 def test_google_maps_mock_in_demo_mode_even_with_key(registry, monkeypatch):
@@ -107,6 +111,53 @@ def test_company_websites_mock_in_demo_mode(registry, monkeypatch):
 
     assert resolved.ok
     assert isinstance(resolved.adapter, MockCompanyWebsitesAdapter)
+
+
+# --------------------------------------------------------------------------- #
+# Demo-only sources (no real adapter) must never mock a real run
+# --------------------------------------------------------------------------- #
+
+
+def test_directories_skipped_in_real_mode(registry, monkeypatch):
+    """directories has NO real adapter — a real run must skip it with a reason,
+    not inject fabricated mock companies (the 134-fake-rows bug)."""
+    monkeypatch.setenv("DEMO_MODE", "false")
+    monkeypatch.setenv("ADAPTER_MODE", "auto")
+    _reset()
+
+    resolved = registry.resolve_source(SourceName.DIRECTORIES, enabled=True, signed_off=True)
+
+    assert not resolved.ok
+    assert resolved.adapter is None
+    assert "no live adapter" in resolved.unavailable.reason
+
+
+def test_directories_mock_in_demo_mode(registry, monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    _reset()
+
+    resolved = registry.resolve_source(SourceName.DIRECTORIES, enabled=True, signed_off=True)
+
+    assert resolved.ok
+    from app.adapters.mock.directories import MockDirectoriesAdapter
+
+    assert isinstance(resolved.adapter, MockDirectoriesAdapter)
+
+
+def test_directories_mock_with_explicit_override(registry, monkeypatch):
+    """SOURCE_DIRECTORIES_MODE=mock is the deliberate escape hatch — an operator
+    explicitly opting into mock data keeps it, even outside demo mode."""
+    monkeypatch.setenv("DEMO_MODE", "false")
+    monkeypatch.setenv("ADAPTER_MODE", "auto")
+    monkeypatch.setenv("SOURCE_DIRECTORIES_MODE", "mock")
+    _reset()
+
+    resolved = registry.resolve_source(SourceName.DIRECTORIES, enabled=True, signed_off=True)
+
+    assert resolved.ok
+    from app.adapters.mock.directories import MockDirectoriesAdapter
+
+    assert isinstance(resolved.adapter, MockDirectoriesAdapter)
 
 
 # --------------------------------------------------------------------------- #

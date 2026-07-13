@@ -450,3 +450,217 @@ def test_unknown_retry_updates_check_in_place(small_pipeline):
     assert updated.id == check.id  # same row updated in place
     assert after == before  # no duplicate check appended
     assert updated.retry_count == 1  # attempt counted
+
+
+def test_validation_stages_option_skips_millionverifier(session: Session):
+    """Batch 6.3: a job that deselects the millionverifier stage must skip the
+    verifier call — mv_status stays None and decide() verifies on the remaining
+    stages, with an accurate final_reason."""
+    from app.pipeline.stages import run_validation_for_candidate
+
+    tenant, user = _make_tenant(session)
+    job = _make_job(session, tenant, user)
+    job.totals_json = {
+        "job_options": {
+            "validation_stages": ["syntax", "disposable", "role_based", "mx", "llm"]
+        }
+    }
+    company = Company(
+        tenant_id=tenant.id,
+        job_id=job.id,
+        canonical_name="Stage Select Ltd",
+        domain="stageselect.example",
+    )
+    session.add(company)
+    session.flush()
+    contact = Contact(
+        tenant_id=tenant.id,
+        job_id=job.id,
+        company_id=company.id,
+        full_name="Ada Stage",
+        email=None,
+    )
+    session.add(contact)
+    session.flush()
+    candidate = EmailCandidate(
+        contact_id=contact.id, email="ada@stageselect.example", source="crawl"
+    )
+    session.add(candidate)
+    session.commit()
+    tid = tenant.id
+    try:
+        check = run_validation_for_candidate(session, get_redis(), job, candidate)
+        assert check.millionverifier_status is None  # verifier stage skipped
+        assert check.final_status == FinalEmailStatus.VERIFIED
+        assert "verifier not run" in (check.final_reason or "")
+        assert check.llm_score is not None  # llm stage still ran
+
+        # And the mirror case: llm deselected, MV on -> llm_score None, MV ran.
+        job.totals_json = {
+            "job_options": {
+                "validation_stages": [
+                    "syntax", "disposable", "role_based", "mx", "millionverifier"
+                ]
+            }
+        }
+        candidate2 = EmailCandidate(
+            contact_id=contact.id, email="ada.two@stageselect.example", source="crawl"
+        )
+        session.add(candidate2)
+        session.flush()
+        check2 = run_validation_for_candidate(session, get_redis(), job, candidate2)
+        assert check2.llm_score is None  # llm stage skipped
+        assert check2.millionverifier_status is not None  # verifier ran
+    finally:
+        session.rollback()
+        session.delete(session.get(Tenant, tid))
+        session.commit()
+
+
+def test_enrichment_rate_limit_defers_then_recovers(session: Session, monkeypatch):
+    """Batch 6.4: a rate-limited enrichment lookup is deferred as PENDING (not
+    NO_RESULT); the orchestrator's end-of-stage retry pass recovers it."""
+    from app.adapters._http import ProviderRateLimited
+    from app.adapters.base import ExtractedContact
+    from app.constants import EnrichmentStatus
+    from app.pipeline.orchestrator import _run_enrichment_stage
+    from app.pipeline.stages import run_enrichment
+
+    tenant, user = _make_tenant(session)
+    job = _make_job(session, tenant, user)
+    company = Company(
+        tenant_id=tenant.id,
+        job_id=job.id,
+        canonical_name="Deferred Co",
+        domain="deferredco.example",
+    )
+    session.add(company)
+    session.flush()
+    contact = Contact(
+        tenant_id=tenant.id,
+        job_id=job.id,
+        company_id=company.id,
+        full_name="Grace Deferred",
+        email=None,
+    )
+    session.add(contact)
+    session.commit()
+    tid = tenant.id
+
+    class _FlakyAdapter:
+        provider = "rocketreach"
+        calls = 0
+
+        async def enrich(self, **kwargs):
+            type(self).calls += 1
+            if type(self).calls == 1:
+                raise ProviderRateLimited("HTTP 429", retry_after=0.0)
+            return [
+                ExtractedContact(
+                    full_name="Grace Deferred",
+                    email="grace@deferredco.example",
+                    confidence_score=0.9,
+                    source_type="enrichment",
+                )
+            ]
+
+    from app.adapters import registry as registry_mod
+
+    monkeypatch.setattr(
+        registry_mod.AdapterRegistry, "enrichment_adapter", lambda self, provider="rocketreach": _FlakyAdapter()
+    )
+    try:
+        # First call: deferred, contact stays PENDING with no email.
+        res = run_enrichment(session, get_redis(), job, contact)
+        assert res == {"enriched": 0, "deferred": 1}
+        assert contact.enrichment_status == EnrichmentStatus.PENDING
+        assert contact.email is None
+
+        # Full stage run (fresh contact state): retry pass recovers it.
+        contact.enrichment_status = EnrichmentStatus.PENDING
+        session.flush()
+        _FlakyAdapter.calls = 0
+        out = _run_enrichment_stage(session, get_redis(), job)
+        assert out["enriched"] == 1
+        assert out["deferred"] == 0
+        session.refresh(contact)
+        assert contact.email == "grace@deferredco.example"
+        assert contact.enrichment_status == EnrichmentStatus.ENRICHED
+    finally:
+        session.rollback()
+        session.delete(session.get(Tenant, tid))
+        session.commit()
+
+
+def test_cleanup_mock_directories(session: Session):
+    """Batch 6.2: the purge removes directories-only companies (with riders),
+    strips mock evidence from merged survivors, and leaves real companies alone."""
+    from app.models import CompanySource
+    from scripts.cleanup_mock_directories import cleanup_directories_companies
+
+    tenant, user = _make_tenant(session)
+    job = _make_job(session, tenant, user)
+
+    def _co(name, urls=None):
+        c = Company(
+            tenant_id=tenant.id, job_id=job.id, canonical_name=name,
+            domain=f"{name.lower().replace(' ', '')}.example", source_urls=urls or [],
+        )
+        session.add(c)
+        session.flush()
+        return c
+
+    real_co = _co("Real Maps Co")
+    session.add(CompanySource(company_id=real_co.id, source_name="google_maps",
+                              access_method="mock", compliance_posture="green"))
+    fake_co = _co("Fake Directory Co")
+    session.add(CompanySource(company_id=fake_co.id, source_name="directories",
+                              access_method="mock", compliance_posture="green"))
+    merged_co = _co("Merged Co", urls=["https://justdial-clone.example/ca/1", "https://mergedco.example"])
+    session.add(CompanySource(company_id=merged_co.id, source_name="google_maps",
+                              access_method="mock", compliance_posture="green"))
+    session.add(CompanySource(company_id=merged_co.id, source_name="directories",
+                              access_method="mock", compliance_posture="green"))
+    # A contact + lead riding on the fake company must go with it.
+    fake_contact = Contact(tenant_id=tenant.id, job_id=job.id, company_id=fake_co.id,
+                           full_name="Fake Person", email="fake@fake.example")
+    session.add(fake_contact)
+    session.flush()
+    session.add(SalesReadyLead(tenant_id=tenant.id, job_id=job.id, contact_id=fake_contact.id,
+                               company_id=fake_co.id, email="fake@fake.example",
+                               company_name="Fake Directory Co"))
+    session.commit()
+    tid, jid = tenant.id, job.id
+    fake_id, real_id, merged_id = fake_co.id, real_co.id, merged_co.id
+
+    try:
+        dry = cleanup_directories_companies(session, tid, apply=False)
+        assert dry["companies_to_delete"] == 1
+        assert dry["merged_survivors_to_strip"] == 1
+        assert dry["contacts_riding"] == 1
+        assert dry["sales_ready_leads_riding"] == 1
+        # Dry run mutated nothing.
+        assert session.get(Company, fake_id) is not None
+
+        applied = cleanup_directories_companies(session, tid, apply=True, sheet_sync=False)
+        assert applied["applied"] is True
+        session.expire_all()
+        assert session.get(Company, fake_id) is None  # fake deleted
+        assert session.get(Company, real_id) is not None  # real untouched
+        merged = session.get(Company, merged_id)
+        assert merged is not None  # merged survives...
+        srcs = session.scalars(
+            select(CompanySource.source_name).where(CompanySource.company_id == merged_id)
+        ).all()
+        assert "directories" not in srcs  # ...but loses the mock evidence
+        assert merged.source_urls == ["https://mergedco.example"]  # mock URL stripped
+        leads = session.scalar(
+            select(func.count()).select_from(SalesReadyLead).where(SalesReadyLead.job_id == jid)
+        )
+        assert leads == 0  # orphan lead removed
+    finally:
+        session.rollback()
+        t = session.get(Tenant, tid)
+        if t is not None:
+            session.delete(t)
+            session.commit()

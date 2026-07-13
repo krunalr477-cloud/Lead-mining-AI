@@ -83,8 +83,11 @@ class Settings(BaseSettings):
     sheets_writes_per_minute: int = 50
 
     # Provider rate limits (per tenant, per minute) — paced through a token bucket
-    # so enrichment/validation don't hammer a provider into 429s.
-    enrichment_lookups_per_minute: int = 30
+    # so enrichment/validation don't hammer a provider into 429s. RocketReach
+    # plans throttle aggressively (a real run saw 11/12 lookups 429 at 30/min),
+    # so enrichment defaults conservative.
+    enrichment_lookups_per_minute: int = 6
+    enrichment_rate_limit_retries: int = 2
     verifier_checks_per_minute: int = 60
     llm_scores_per_minute: int = 60
 

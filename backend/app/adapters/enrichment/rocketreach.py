@@ -23,6 +23,7 @@ payload is stored on the returned candidate's ``source_snippet``/raw for audit.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -83,23 +84,34 @@ class RocketReachAdapter(EnrichmentAdapter):
         headers = {"Api-Key": api_key, "Accept": "application/json"}
         audit_url = f"rocketreach:person/lookup?name={person_name}&domain={domain or ''}"
 
-        try:
-            response = await audited_request(
-                ctx,
-                "GET",
-                _LOOKUP_URL,
-                audit_url=audit_url,
-                headers=headers,
-                params=params,
-            )
-        except ProviderRateLimited:
-            # Throttled/5xx — transient. Don't spend the (failed) credit, don't raise.
-            return []
-        except ProviderError:
-            # 4xx (e.g. 404 no match): count the credit, cache the empty result.
-            ctx.record_usage("rocketreach", "person.lookup", unit_cost=_UNIT_COST)
-            cache_set(ctx, key, {"status": "not_found"}, ROCKETREACH_TTL)
-            return []
+        # Rate-limited attempts back off (honoring Retry-After) and retry; when
+        # every attempt is throttled the exception PROPAGATES so the pipeline can
+        # defer the contact (enrichment_status=PENDING) instead of writing it off
+        # as no_result — the bug that zeroed out enrichment on a 429 storm.
+        attempts = 1 + max(0, settings.enrichment_rate_limit_retries)
+        response = None
+        for attempt in range(attempts):
+            try:
+                response = await audited_request(
+                    ctx,
+                    "GET",
+                    _LOOKUP_URL,
+                    audit_url=audit_url,
+                    headers=headers,
+                    params=params,
+                )
+                break
+            except ProviderRateLimited as exc:
+                if attempt == attempts - 1:
+                    raise  # exhausted — caller defers the contact
+                delay = exc.retry_after if exc.retry_after is not None else float(2**attempt)
+                await asyncio.sleep(min(delay, 30.0))
+            except ProviderError:
+                # 4xx (e.g. 404 no match): count the credit, cache the empty result.
+                ctx.record_usage("rocketreach", "person.lookup", unit_cost=_UNIT_COST)
+                cache_set(ctx, key, {"status": "not_found"}, ROCKETREACH_TTL)
+                return []
+        assert response is not None  # loop either broke with a response or raised
 
         try:
             payload = response.json()

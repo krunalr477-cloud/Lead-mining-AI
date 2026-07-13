@@ -121,8 +121,42 @@ async def test_cache_prevents_second_call(payload):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_rate_limited_returns_empty_no_credit():
-    respx.get(_LOOKUP_URL).mock(return_value=httpx.Response(429, json={"detail": "throttled"}))
+async def test_rate_limited_retries_then_raises_no_credit():
+    """Every attempt 429s -> the adapter retries (honoring Retry-After) and then
+    RAISES so the pipeline defers the contact instead of writing NO_RESULT."""
+    from app.adapters._http import ProviderRateLimited
+
+    route = respx.get(_LOOKUP_URL).mock(
+        return_value=httpx.Response(429, json={"detail": "throttled"}, headers={"Retry-After": "0"})
+    )
+    ctx = FakeContext()
+    with pytest.raises(ProviderRateLimited):
+        await RocketReachAdapter().enrich(
+            company_name="Analytical Engines Ltd",
+            domain="analyticalengines.com",
+            website=None,
+            person_name="Ada Lovelace",
+            designation=None,
+            location=None,
+            ctx=ctx,
+        )
+    # Default enrichment_rate_limit_retries=2 -> 3 attempts total.
+    assert route.call_count == 3
+    assert not any(u["endpoint"] == "person.lookup" for u in ctx.usages)
+    assert any(a["status"] == "error" for a in ctx.audits)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_rate_limited_then_success_recovers(payload):
+    """Two 429s followed by a 200 -> the retry loop recovers the lookup."""
+    route = respx.get(_LOOKUP_URL).mock(
+        side_effect=[
+            httpx.Response(429, json={"detail": "throttled"}, headers={"Retry-After": "0"}),
+            httpx.Response(429, json={"detail": "throttled"}, headers={"Retry-After": "0"}),
+            httpx.Response(200, json=payload),
+        ]
+    )
     ctx = FakeContext()
     out = await RocketReachAdapter().enrich(
         company_name="Analytical Engines Ltd",
@@ -133,9 +167,11 @@ async def test_rate_limited_returns_empty_no_credit():
         location=None,
         ctx=ctx,
     )
-    assert out == []
-    assert not any(u["endpoint"] == "person.lookup" for u in ctx.usages)
-    assert any(a["status"] == "error" for a in ctx.audits)
+    assert route.call_count == 3
+    assert len(out) == 1
+    assert out[0].email == "ada.lovelace@analyticalengines.com"
+    # The successful lookup charges exactly one credit.
+    assert sum(1 for u in ctx.usages if u["endpoint"] == "person.lookup") == 1
 
 
 @pytest.mark.asyncio

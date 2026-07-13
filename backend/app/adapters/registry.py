@@ -283,7 +283,7 @@ class AdapterRegistry:
             )
 
         if card.posture == Posture.GREEN:
-            return ResolvedSource(name, self._resolve_adapter(name, card), None)
+            return self._resolved_or_unavailable(name, card)
 
         # Gated: require enable + sign-off + global env flag.
         settings = get_settings()
@@ -296,28 +296,45 @@ class AdapterRegistry:
         elif not flag_on:
             reason = f"global flag {flag_name} is off"
         else:
-            return ResolvedSource(name, self._resolve_adapter(name, card), None)
+            return self._resolved_or_unavailable(name, card)
 
         return ResolvedSource(name, None, SourceUnavailable(name.value, reason, card.posture))
 
-    def _resolve_adapter(self, name: SourceName, card: SourceAdapter) -> SourceAdapter:
-        """Pick the REAL adapter when the mode allows and its required
-        credentials resolve; otherwise fall back to the mock.
+    def _resolved_or_unavailable(self, name: SourceName, card: SourceAdapter) -> ResolvedSource:
+        """Wrap _resolve_adapter: a None adapter becomes a skip, never a crash."""
+        adapter = self._resolve_adapter(name, card)
+        if adapter is None:
+            return ResolvedSource(
+                name,
+                None,
+                SourceUnavailable(
+                    name.value,
+                    "no live adapter — skipped (demo-only source or missing credentials)",
+                    card.posture,
+                ),
+            )
+        return ResolvedSource(name, adapter, None)
 
-        Mode gate: MOCK (or demo mode) always uses the mock. REAL/AUTO try the
-        real factory in SOURCE_ADAPTERS' first slot, which returns None when the
-        source's required credentials are absent (then we serve the mock).
+    def _resolve_adapter(self, name: SourceName, card: SourceAdapter) -> SourceAdapter | None:
+        """Pick the adapter for the effective mode, or None when none may run.
+
+        MOCK mode (demo mode, ADAPTER_MODE=mock, or a per-source override) always
+        serves the mock. In REAL/AUTO mode the real factory decides: no factory
+        registered (demo-only source like directories) or the factory returning
+        None (missing credentials) yields None — the source is SKIPPED with an
+        explicit event rather than silently substituting fabricated mock data
+        into a real run (the bug that injected 134 fake companies into a real
+        tenant's sheet).
         """
         entry = SOURCE_ADAPTERS.get(name)
         if entry is None:
             return card
         real_factory, mock = entry
-        if real_factory is None:
-            return mock
         if self.mode_for(name) == AdapterMode.MOCK:
             return mock
-        real = real_factory()
-        return real if real is not None else mock
+        if real_factory is None:
+            return None
+        return real_factory()
 
     def mode_for(self, source_name: SourceName | str) -> AdapterMode:
         """Effective adapter mode (always MOCK in this phase / demo mode)."""

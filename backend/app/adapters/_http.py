@@ -33,7 +33,29 @@ class ProviderError(Exception):
 
 
 class ProviderRateLimited(ProviderError):
-    """A retryable provider failure — HTTP 429 or 5xx. Caller should back off."""
+    """A retryable provider failure — HTTP 429 or 5xx. Caller should back off.
+
+    ``retry_after`` carries the provider's Retry-After header (seconds, capped)
+    when one was sent, so callers can pace their backoff to the provider's own
+    guidance instead of guessing."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+_RETRY_AFTER_CAP = 120.0
+
+
+def _parse_retry_after(response: httpx.Response) -> float | None:
+    """Seconds from an integer Retry-After header; HTTP-date form is ignored."""
+    raw = response.headers.get("Retry-After", "").strip()
+    if not raw:
+        return None
+    try:
+        return min(float(raw), _RETRY_AFTER_CAP)
+    except ValueError:
+        return None
 
 
 async def audited_request(
@@ -68,7 +90,10 @@ async def audited_request(
             status="error",
             error=f"HTTP {response.status_code}",
         )
-        raise ProviderRateLimited(f"HTTP {response.status_code} from {trail}")
+        raise ProviderRateLimited(
+            f"HTTP {response.status_code} from {trail}",
+            retry_after=_parse_retry_after(response),
+        )
     if response.status_code >= 400:
         ctx.audit(trail, status="error", error=f"HTTP {response.status_code}")
         raise ProviderError(f"HTTP {response.status_code} from {trail}")

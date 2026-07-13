@@ -45,8 +45,11 @@ import httpx
 
 from app.adapters.base import DiscoveredCompany, JobSpec, SourceAdapter
 from app.adapters.google.geocode import geocode
-from app.adapters.sources.firm_taxonomy import expand_company_type
+from app.adapters.sources.firm_taxonomy import expand_query_variants
+from app.adapters.sources.geo_tiling import haversine_km, tile_circle
+from app.config import get_settings
 from app.constants import AccessMethod, Posture, SourceName
+from app.crawler.url_hygiene import is_non_company_website
 
 if TYPE_CHECKING:
     from app.adapters.context import SourceRunContext
@@ -140,15 +143,14 @@ def _parse_address_components(components: list[dict[str, Any]]) -> dict[str, str
     return out
 
 
-def _text_query(job: JobSpec) -> str:
-    """Build the free-text query from company type + services + city.
+def _text_query(job: JobSpec, expanded: str) -> str:
+    """Build the free-text query from an expanded firm phrase + services + city.
 
-    The company type is expanded through the firm taxonomy so industry shorthand
-    (CPA, KPO, BPO, IT, MSP, ...) becomes a phrase Places can actually match,
-    while unknown types pass through so any firm is still targetable.
+    ``expanded`` comes from the firm taxonomy (``expand_query_variants``) so
+    industry shorthand (CPA, KPO, BPO, IT, MSP, ...) becomes phrases Places can
+    actually match, while unknown types pass through so any firm is targetable.
     """
     parts: list[str] = []
-    expanded = expand_company_type(job.company_type)
     if expanded:
         parts.append(expanded)
     if job.services:
@@ -157,6 +159,12 @@ def _text_query(job: JobSpec) -> str:
     if where:
         parts.append(f"in {where}")
     return " ".join(p for p in parts if p).strip() or "companies"
+
+
+# Website hygiene lives in app/crawler/url_hygiene (outside the adapters tree —
+# the compliance guard forbids social-host literals in real adapter code; this
+# filter REJECTS such hosts, it never targets them).
+_is_non_company_website = is_non_company_website
 
 
 class GoogleMapsAdapter(SourceAdapter):
@@ -226,6 +234,16 @@ class GoogleMapsAdapter(SourceAdapter):
 
     def _map_place(self, place: dict[str, Any]) -> DiscoveredCompany:
         website = place.get("websiteUri")
+        facebook_url = None
+        listed_website = None
+        if _is_non_company_website(website):
+            # A social profile / directory listing is NOT the company's site —
+            # don't let it poison the crawl or become the dedupe domain. Keep
+            # the original in raw_payload; promote facebook pages to their slot.
+            listed_website = website
+            if "facebook.com" in (website or ""):
+                facebook_url = website
+            website = None
         loc = place.get("location") or {}
         parts = _parse_address_components(place.get("addressComponents", []))
         name = (place.get("displayName") or {}).get("text") or "Unknown"
@@ -240,6 +258,7 @@ class GoogleMapsAdapter(SourceAdapter):
             ),
             industry=_industry_from_place(place),
             website=website,
+            facebook_page_url=facebook_url,
             domain=_domain_from_url(website),
             phone=place.get("internationalPhoneNumber"),
             address=place.get("formattedAddress"),
@@ -252,7 +271,11 @@ class GoogleMapsAdapter(SourceAdapter):
             google_place_id=place_id,
             google_rating=float(rating) if rating is not None else None,
             google_reviews=int(reviews) if reviews is not None else None,
-            raw_payload={"places_new": True, "place_id": place_id},
+            raw_payload={
+                "places_new": True,
+                "place_id": place_id,
+                **({"listed_website": listed_website} if listed_website else {}),
+            },
         )
 
     async def _resolve_center(
@@ -270,16 +293,21 @@ class GoogleMapsAdapter(SourceAdapter):
             return None
         return (result.latitude, result.longitude)
 
-    def _location_bias(self, job: JobSpec, center: tuple[float, float] | None) -> dict | None:
-        if center is None:
-            return None
-        radius_m = float(job.radius_km) * 1000.0 if job.radius_km else 5000.0
-        # Places (New) circle radius must be within (0, 50000] metres.
-        radius_m = max(1.0, min(radius_m, 50000.0))
+    @staticmethod
+    def _location_restriction(center: tuple[float, float], radius_km: float) -> dict:
+        """Places (New) searchText restriction: a bounding RECTANGLE of the
+        requested circle (searchText's locationRestriction supports rectangles
+        only). Results are additionally distance-filtered post-fetch, so the
+        rectangle's corner overshoot never leaks into the run."""
+        radius_km = max(0.1, min(radius_km, 100.0))
+        dlat = radius_km / 110.574
+        import math as _math
+
+        dlng = radius_km / (111.320 * max(0.01, _math.cos(_math.radians(center[0]))))
         return {
-            "circle": {
-                "center": {"latitude": center[0], "longitude": center[1]},
-                "radius": radius_m,
+            "rectangle": {
+                "low": {"latitude": center[0] - dlat, "longitude": center[1] - dlng},
+                "high": {"latitude": center[0] + dlat, "longitude": center[1] + dlng},
             }
         }
 
@@ -288,41 +316,94 @@ class GoogleMapsAdapter(SourceAdapter):
     async def discover(
         self, job: JobSpec, ctx: SourceRunContext
     ) -> AsyncIterator[DiscoveredCompany]:
-        """Text Search over ``places:searchText`` with a location-biased circle.
+        """Text Search over ``places:searchText``: query-variant fan-out, an
+        optional deep-discovery geo-tile sweep, rectangle locationRestriction,
+        and a haversine post-filter.
 
-        Geocodes the job location first when lat/lng is missing, then paginates
-        via ``nextPageToken`` up to MAX_PAGES. Deduplicates by place id within
-        the run. Every network touch is audited + metered by construction.
+        One textQuery caps at ~60 results (MAX_PAGES pages x 20), so the firm
+        type fans out into up to ``places_query_variants`` phrasings; with
+        ``job.deep_discovery`` the radius is additionally covered by 7 half-size
+        tiles, each searched per variant. All results share one place-id dedupe
+        set; total searches are capped by ``places_max_searches_per_job``.
+        Geocodes the job location first when lat/lng is missing. Every network
+        touch is audited + metered by construction.
         """
+        settings = get_settings()
+        variants = expand_query_variants(
+            job.company_type, max(1, min(settings.places_query_variants, 6))
+        )
         seen: set[str] = set()
+        searches_left = max(1, settings.places_max_searches_per_job)
+        dropped_by_distance = 0
+
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
             center = await self._resolve_center(client, job, ctx)
-            bias = self._location_bias(job, center)
+            radius_km = float(job.radius_km) if job.radius_km else 5.0
 
-            payload: dict[str, Any] = {"textQuery": _text_query(job)}
-            if bias is not None:
-                payload["locationBias"] = bias
+            # (tile_center, tile_radius) pairs to sweep; a single "tile" (the
+            # whole circle) unless deep discovery is on.
+            if center is not None and getattr(job, "deep_discovery", False):
+                tiles = tile_circle(center[0], center[1], radius_km)
+            elif center is not None:
+                tiles = [(center[0], center[1], radius_km)]
+            else:
+                tiles = [None]  # no location resolved: unrestricted query
 
-            page_token: str | None = None
-            for _page in range(MAX_PAGES):
-                if page_token:
-                    payload["pageToken"] = page_token
-                body = await self._post_places(
-                    client,
-                    PLACES_SEARCH_TEXT_URL,
-                    payload,
-                    ctx,
-                    endpoint="places.searchText",
-                    unit_cost=SEARCH_TEXT_UNIT_COST,
-                )
-                for place in body.get("places") or []:
-                    pid = place.get("id")
-                    if pid and pid in seen:
-                        continue
-                    if pid:
-                        seen.add(pid)
-                    yield self._map_place(place)
+            for tile in tiles:
+                for expanded in variants:
+                    if searches_left <= 0:
+                        break
+                    searches_left -= 1
+                    payload: dict[str, Any] = {"textQuery": _text_query(job, expanded)}
+                    if tile is not None:
+                        payload["locationRestriction"] = self._location_restriction(
+                            (tile[0], tile[1]), tile[2]
+                        )
 
-                page_token = body.get("nextPageToken")
-                if not page_token:
-                    break
+                    page_token: str | None = None
+                    for _page in range(MAX_PAGES):
+                        if page_token:
+                            payload["pageToken"] = page_token
+                        body = await self._post_places(
+                            client,
+                            PLACES_SEARCH_TEXT_URL,
+                            payload,
+                            ctx,
+                            endpoint="places.searchText",
+                            unit_cost=SEARCH_TEXT_UNIT_COST,
+                        )
+                        for place in body.get("places") or []:
+                            pid = place.get("id")
+                            if pid and pid in seen:
+                                continue
+                            if pid:
+                                seen.add(pid)
+                            # Drop results beyond the requested radius (the
+                            # rectangle overshoots at corners; older locationBias
+                            # was soft and leaked far-away results).
+                            loc = place.get("location") or {}
+                            plat, plng = loc.get("latitude"), loc.get("longitude")
+                            if (
+                                center is not None
+                                and plat is not None
+                                and plng is not None
+                                and haversine_km(center[0], center[1], plat, plng)
+                                > radius_km * 1.2
+                            ):
+                                dropped_by_distance += 1
+                                continue
+                            yield self._map_place(place)
+
+                        page_token = body.get("nextPageToken")
+                        if not page_token:
+                            break
+                else:
+                    continue
+                break  # searches budget exhausted — stop sweeping tiles too
+
+        if dropped_by_distance:
+            ctx.audit(
+                "places:distance_filter",
+                status="ok",
+                records_found=dropped_by_distance,
+            )

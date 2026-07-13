@@ -39,6 +39,10 @@ class JobCreate(BaseModel):
     validation_stages: list[str] = Field(default_factory=list)
     output_options: list[str] = Field(default_factory=list)
 
+    # Opt-in geo-tile sweep: 7 sub-circle Places searches per query variant —
+    # beats the ~60-results/query cap; multiplies Places cost accordingly.
+    deep_discovery: bool = False
+
     notes: str | None = None
 
 

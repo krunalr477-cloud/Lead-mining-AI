@@ -45,6 +45,9 @@ class JobSpec:
     company_size_max: int | None
     contact_roles: list[str]
     exclude_keywords: list[str]
+    # Opt-in geo-tile sweep: cover the radius with 7 sub-circles, one Places
+    # search set per tile (beats the ~60/query cap; multiplies Places cost).
+    deep_discovery: bool = False
 
 
 @dataclass(slots=True)

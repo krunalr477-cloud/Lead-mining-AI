@@ -69,7 +69,23 @@ def test_text_query_uses_expansion() -> None:
         contact_roles=[],
         exclude_keywords=[],
     )
-    q = _text_query(job).lower()
+    q = _text_query(job, expand_company_type(job.company_type)).lower()
     assert "knowledge process outsourcing" in q
     assert "bengaluru" in q
     assert "analytics" in q
+
+
+def test_expand_query_variants() -> None:
+    from app.adapters.sources.firm_taxonomy import expand_query_variants
+
+    # The legacy expansion is always the first (back-compat anchor).
+    variants = expand_query_variants("CA Firm", 3)
+    assert variants[0] == expand_company_type("CA Firm")
+    assert len(variants) == 3
+    assert len({v.lower() for v in variants}) == 3  # distinct
+
+    # Unknown type -> single passthrough element.
+    assert expand_query_variants("Quantum Basket Weaving", 4) == ["Quantum Basket Weaving"]
+    # Limit clamps.
+    assert len(expand_query_variants("CA Firm", 1)) == 1
+    assert expand_query_variants(None, 3) == ["companies"]

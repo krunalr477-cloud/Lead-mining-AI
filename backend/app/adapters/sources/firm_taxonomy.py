@@ -140,6 +140,68 @@ FIRM_TYPE_GROUPS: dict[str, list[str]] = {
 
 FIRM_TYPE_PRESETS: list[str] = [t for group in FIRM_TYPE_GROUPS.values() for t in group]
 
+# Alternate search phrasings per firm type. One Places textQuery caps at ~60
+# results (MAX_PAGES x 20); fanning the same intent across distinct phrasings
+# surfaces businesses each single query misses. The first variant used is always
+# ``expand_company_type(...)`` (back-compat anchor); these are unioned after it.
+FIRM_TYPE_VARIANTS: dict[str, list[str]] = {
+    "ca": ["chartered accountant", "CA firm", "tax consultant", "audit firm", "GST consultant"],
+    "ca firm": [
+        "chartered accountant",
+        "CA firm",
+        "tax consultant",
+        "audit firm",
+        "GST consultant",
+    ],
+    "cpa": ["CPA firm", "certified public accountant", "tax preparation", "accounting firm"],
+    "cpa firm": ["CPA firm", "certified public accountant", "tax preparation", "accounting firm"],
+    "audit firm": ["audit firm", "assurance services", "chartered accountant"],
+    "tax": ["tax consultant", "tax preparation service", "accounting firm"],
+    "bpo": ["BPO company", "business process outsourcing", "call center services"],
+    "kpo": ["KPO company", "knowledge process outsourcing", "research outsourcing"],
+    "it": ["IT services company", "software company", "technology consulting"],
+    "it company": ["IT services company", "software company", "technology consulting"],
+    "it services": ["IT services company", "software development", "technology consulting"],
+    "msp": ["managed IT service provider", "IT support company", "IT services"],
+    "software": ["software development company", "software agency", "IT services"],
+    "software company": ["software development company", "software agency", "IT services"],
+    "law firm": ["law firm", "advocates", "legal services", "attorneys"],
+    "legal services": ["legal services", "law firm", "advocates"],
+    "marketing agency": ["marketing agency", "digital marketing agency", "branding agency"],
+    "digital agency": ["digital marketing agency", "web design agency", "SEO agency"],
+    "recruitment agency": ["recruitment agency", "staffing agency", "placement services"],
+    "staffing": ["staffing agency", "recruitment agency", "manpower services"],
+    "real estate": ["real estate agency", "property dealer", "realtor"],
+    "consulting": ["consulting firm", "business consultant", "advisory services"],
+}
+
+
+def expand_query_variants(company_type: str | None, limit: int) -> list[str]:
+    """Distinct search phrasings for a firm type, capped at ``limit``.
+
+    The first element is always ``expand_company_type(company_type)`` so a
+    single-variant configuration behaves exactly like the legacy single query.
+    Unknown types return just that one element.
+    """
+    limit = max(1, limit)
+    anchor = expand_company_type(company_type)
+    out: list[str] = [anchor] if anchor else []
+    seen = {anchor.lower()} if anchor else set()
+    key = _normalize(company_type or "")
+    variants = FIRM_TYPE_VARIANTS.get(key)
+    if variants is None:
+        first = key.split(" ", 1)[0]
+        variants = FIRM_TYPE_VARIANTS.get(first, [])
+    for phrase in variants:
+        low = phrase.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        out.append(phrase)
+        if len(out) >= limit:
+            break
+    return out[:limit] or ["companies"]
+
 
 def _normalize(value: str) -> str:
     # Strip a trailing "(MSP)"-style parenthetical and lowercase.

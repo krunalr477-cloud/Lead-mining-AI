@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     crawler_second_pass_max: int = 60
     crawler_concurrency: int = 4
 
+    # Places discovery (Batch 8): one textQuery caps at ~60 results, so the firm
+    # type fans out into N phrasings (clamped 1-6 in code); deep_discovery tiles
+    # the radius into 7 sub-circles. The searches cap bounds worst-case spend.
+    places_query_variants: int = 3
+    places_max_searches_per_job: int = 40
+
     # Sheets sync
     sheets_writes_per_minute: int = 50
 

@@ -149,6 +149,7 @@ export interface JobCreate {
   contact_roles?: string[];
   exclude_keywords?: string[];
   selected_sources?: string[];
+  deep_discovery?: boolean;
   enrichment_providers?: string[];
   validation_stages?: string[];
   output_options?: string[];

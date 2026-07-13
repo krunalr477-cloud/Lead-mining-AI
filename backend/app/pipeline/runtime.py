@@ -129,6 +129,9 @@ def build_job_spec(job: MiningJob) -> JobSpec:
         company_size_max=job.company_size_max,
         contact_roles=list(job.contact_roles or []),
         exclude_keywords=list(job.exclude_keywords or []),
+        deep_discovery=bool(
+            ((job.totals_json or {}).get("job_options") or {}).get("deep_discovery", False)
+        ),
     )
 
 

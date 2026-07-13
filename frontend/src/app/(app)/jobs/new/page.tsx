@@ -246,6 +246,7 @@ const schema = z.object({
   roles: z.array(z.string()),
   excludeKeywords: z.array(z.string()),
   sources: z.array(z.string()).min(1, "Select at least one data source"),
+  deepDiscovery: z.boolean(),
   enrichRocketreach: z.boolean(),
   validationStages: z.array(z.string()),
   outputUpdateSheet: z.boolean(),
@@ -272,6 +273,7 @@ const DEFAULTS: FormValues = {
   roles: ["Founder", "CEO", "Owner", "Partner", "Director"],
   excludeKeywords: DEFAULT_EXCLUDE,
   sources: ["google_maps", "company_websites"],
+  deepDiscovery: false,
   enrichRocketreach: true,
   validationStages: VALIDATION_STAGES.map((s) => s.key),
   outputUpdateSheet: true,
@@ -308,6 +310,7 @@ function toJobCreate(v: FormValues): JobCreate {
     contact_roles: v.roles,
     exclude_keywords: v.excludeKeywords,
     selected_sources: v.sources,
+    deep_discovery: v.deepDiscovery,
     enrichment_providers: v.enrichRocketreach ? ["rocketreach"] : [],
     validation_stages: v.validationStages,
     output_options: outputOptions,
@@ -644,6 +647,20 @@ export default function NewJobPage() {
             {errors.sources && (
               <p className="mt-2 text-xs text-danger">{errors.sources.message}</p>
             )}
+            <div className="mt-3 border-t border-edge pt-3">
+              <Controller
+                control={control}
+                name="deepDiscovery"
+                render={({ field }) => (
+                  <ToggleRow
+                    label="Deep discovery"
+                    description="Sweep the radius in 7 area tiles per search query — finds far more businesses than a single search (~7× the Google Maps API cost)."
+                    checked={field.value}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
+            </div>
           </Panel>
 
           {/* Enrichment */}

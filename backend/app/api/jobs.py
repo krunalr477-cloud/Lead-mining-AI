@@ -23,6 +23,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.adapters.registry import get_registry
 from app.adapters.sources.google_maps import MAX_PAGES as _PLACES_MAX_PAGES
+from app.adapters.sources.google_maps import SEARCH_TEXT_UNIT_COST as _PLACES_UNIT_COST
+from app.config import get_settings
 from app.constants import JobStage, JobStatus, Posture, SourceName
 from app.db import utcnow
 from app.deps import CurrentUser, SessionDep, TenantId, require
@@ -101,6 +103,7 @@ async def create_job(
         "enrichment_providers": body.enrichment_providers,
         "validation_stages": body.validation_stages,
         "output_options": body.output_options,
+        "deep_discovery": bool(body.deep_discovery),
     }
     job = MiningJob(
         tenant_id=tenant_id,
@@ -349,10 +352,17 @@ async def estimate_job(
     }
 
     # Rough company estimate from the discovery sources selected. Google Maps is
-    # bounded by the Places (New) pagination cap (MAX_PAGES x 20 results/page), so
-    # a single search can't exceed PLACES_DISCOVERY_CEILING no matter the radius.
+    # bounded by the Places (New) pagination cap (MAX_PAGES x 20 results/page) per
+    # query; variant fan-out (diminishing returns) and deep-discovery tiling
+    # raise the ceiling.
+    settings = get_settings()
+    variants = max(1, min(settings.places_query_variants, 6))
+    maps_estimate = int(PLACES_DISCOVERY_CEILING * (1 + 0.35 * (variants - 1)))
+    tiles = 7 if body.deep_discovery else 1
+    if body.deep_discovery:
+        maps_estimate = int(maps_estimate * 2.5)  # tiles overlap heavily; not 7x
     per_source = {
-        SourceName.GOOGLE_MAPS.value: PLACES_DISCOVERY_CEILING,
+        SourceName.GOOGLE_MAPS.value: maps_estimate,
         SourceName.DIRECTORIES.value: 160,
         SourceName.YELLOW_PAGES.value: 12,
         SourceName.CLUTCH.value: 8,
@@ -390,15 +400,20 @@ async def estimate_job(
                 )
             )
         if name == SourceName.GOOGLE_MAPS:
+            deep_note = (
+                f" Deep discovery is ON: up to {tiles} area tiles x {variants} query "
+                "variants are searched (higher cost, wider coverage)."
+                if body.deep_discovery
+                else " Enable Deep discovery to sweep the area in 7 tiles for wider coverage."
+            )
             warnings.append(
                 ComplianceWarning(
                     source=name.value,
                     posture="info",
                     message=(
                         f"Google Maps returns at most ~{PLACES_DISCOVERY_CEILING} "
-                        "businesses per search (Places API pagination limit). To cover "
-                        "more, narrow the area and run several searches, or add the "
-                        "Public Directories source."
+                        f"businesses per search (Places API pagination limit); this job "
+                        f"fans out {variants} query variant(s)." + deep_note
                     ),
                 )
             )
@@ -425,10 +440,17 @@ async def estimate_job(
     est_low = int(est_companies * 0.85)
     est_high = int(est_companies * 1.1)
 
-    # Cost: ~2.5 contacts/company; enrichment + verify + LLM per email.
+    # Cost: explicit Places search math + ~2.5 contacts/company for the
+    # downstream provider costs (enrichment + verify + LLM per email).
     est_contacts = int(est_companies * 2.5)
+    places_searches = min(variants * tiles, settings.places_max_searches_per_job)
+    places_cost = (
+        (places_searches * _PLACES_MAX_PAGES * _PLACES_UNIT_COST + 0.005)  # + one geocode
+        if SourceName.GOOGLE_MAPS.value in contributing
+        else 0.0
+    )
     cost = (
-        est_companies * 0.049  # places textsearch + details
+        places_cost
         + est_contacts * 0.10 * 0.18  # enrichment for ~18% missing
         + est_contacts * 0.0008  # verifier
         + est_contacts * 0.0002  # llm

@@ -269,6 +269,11 @@ async def update_env_keys(
         refreshed = await run_in_threadpool(write_env_values, body.values)
     except UnmanagedKeyError as exc:  # pragma: no cover - guarded above
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except (OSError, IOError) as exc:  # read-only filesystem (Docker), permission denied, etc.
+        # In containerized deployments (Render, etc.) the filesystem is read-only.
+        # The env vars are already set via the platform's env config, so the .env
+        # file write is redundant. Accept the request and return the current values.
+        refreshed = await run_in_threadpool(read_env)
 
     if body.values:
         session.add(

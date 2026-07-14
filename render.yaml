@@ -8,66 +8,52 @@
 #   1. leadmine-backend — FastAPI (Python 3.12) Docker service on port 8000
 #   2. leadmine-frontend — Next.js Docker service on port 3000
 #   3. leadmine-db      — Render Postgres (free tier)
-#   4. leadmine-redis   — Render Key Value / Redis (free tier)
 #
 # Notes:
 #   - Free Postgres expires after 30 days. Upgrade to paid to keep data.
 #   - Free web services spin down after 15 min of inactivity (~1 min cold start).
-#   - Free Redis is in-memory only (data lost on restart).
+#   - DEMO_MODE=true so no real Redis/API calls are needed.
 #   - No code changes needed; this Blueprint uses the existing Dockerfiles.
 # ============================================================================
 
-# --- Web Services ----------------------------------------------------------
 services:
 
   # -- Backend: FastAPI (Python 3.12) ------------------------------------
   - type: web
     name: leadmine-backend
     runtime: docker
-    rootDir: backend                    # Docker context = ./backend/
+    rootDir: backend
     dockerfilePath: ./backend/Dockerfile
     region: oregon
     plan: free
-    autoDeploy: true                    # auto-deploy on every push to the connected branch
-    branch: main                        # change to your default branch if different
-    # Build the "api" stage from the multi-stage Dockerfile
-    buildCommand: ""                    # empty = use Dockerfile directly
-    startCommand: ""                    # uses Dockerfile CMD (uvicorn on :8000)
+    autoDeploy: true
+    branch: main
     healthCheckPath: /api/v1/healthz
     envVars:
-      # ---- Database & Redis (injected from connected services) ---------
+      # ---- Database (injected from connected service) ------------------
       - key: DATABASE_URL
         fromDatabase:
           name: leadmine-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: leadmine-redis
-          property: connectionString
       # ---- Core settings ------------------------------------------------
       - key: JWT_SECRET
-        generateValue: true             # auto-generate a secure random secret
-      - key: APP_BASE_URL
-        value: ""                       # set in Render dashboard after deploy (see guide)
-      - key: FRONTEND_URL
-        value: ""                       # set in Render dashboard after deploy (see guide)
+        generateValue: true
       - key: ENVIRONMENT
         value: production
       - key: DEMO_MODE
-        value: "true"                   # true = all adapters use mock data (no real API calls)
+        value: "true"
       - key: RUN_MIGRATIONS
-        value: "1"                      # triggers alembic upgrade head on boot
+        value: "1"
       - key: ADAPTER_MODE
         value: mock
-      # ---- Google OAuth (optional) -------------------------------------
+      - key: REDIS_URL
+        value: redis://localhost:6379/0
       - key: GOOGLE_CLIENT_ID
-        sync: false                     # enter your Google OAuth Client ID in Render dashboard
+        sync: false
       - key: GOOGLE_CLIENT_SECRET
-        sync: false                     # enter your Google OAuth Client Secret in Render dashboard
+        sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: ""                       # set in Render dashboard after deploy (see guide)
-      # ---- Third-party providers (optional) ----------------------------
+        value: ""
       - key: ROCKETREACH_API_KEY
         sync: false
       - key: MILLIONVERIFIER_API_KEY
@@ -80,7 +66,6 @@ services:
         value: mock
       - key: SERP_API_KEY
         sync: false
-      # ---- Security -----------------------------------------------------
       - key: ENCRYPTION_KEY
         generateValue: true
       - key: DEFAULT_SEND_LIMIT_PER_HOUR
@@ -95,45 +80,38 @@ services:
         value: "false"
       - key: ENABLE_COMPLIANCE_GATED_SOURCES
         value: "false"
+      - key: APP_BASE_URL
+        fromService:
+          type: web
+          name: leadmine-backend
+          envVarKey: INTERNAL_SERVICE_URL
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: leadmine-frontend
+          envVarKey: INTERNAL_SERVICE_URL
 
   # -- Frontend: Next.js -------------------------------------------------
   - type: web
     name: leadmine-frontend
     runtime: docker
-    rootDir: frontend                   # Docker context = ./frontend/
+    rootDir: frontend
     dockerfilePath: ./frontend/Dockerfile
     region: oregon
     plan: free
     autoDeploy: true
     branch: main
-    buildCommand: ""
-    startCommand: ""                    # uses Dockerfile CMD (node server.js on :3000)
     envVars:
       - key: LEADMINE_BACKEND_ORIGIN
         fromService:
           type: web
           name: leadmine-backend
           envVarKey: INTERNAL_SERVICE_URL
-      # Google Maps (optional — map won't render without it)
       - key: NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY
         sync: false
 
-# --- Databases -------------------------------------------------------------
 databases:
   - name: leadmine-db
-    plan: free                          # 1 GB, expires after 30 days
+    plan: free
     databaseName: leadmine
     user: leadmine
-
-# --- Key Value (Redis) -----------------------------------------------------
-# Render Key Value is Redis-compatible. On the free tier it is in-memory only
-# (data is lost on restart). The free tier allows 1 instance per workspace.
-#
-# NOTE: Free Key Value instances do NOT have a `connectionString` property
-# exposed to other services. You must enter the host/port/password manually
-# in the backend service's env vars after the first deploy.
-# See the deployment guide for exact steps.
-#
-# If you need Redis to persist, upgrade this instance to the paid tier ($7/mo).
-# Alternatively, set DEMO_MODE=true so Redis is used only for session caching
-# and no data is lost.

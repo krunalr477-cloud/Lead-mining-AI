@@ -22,7 +22,6 @@ services:
   - type: web
     name: leadmine-backend
     runtime: docker
-    rootDir: backend
     dockerfilePath: ./backend/Dockerfile
     region: oregon
     plan: free
@@ -96,7 +95,6 @@ services:
   - type: web
     name: leadmine-frontend
     runtime: docker
-    rootDir: frontend
     dockerfilePath: ./frontend/Dockerfile
     region: oregon
     plan: free

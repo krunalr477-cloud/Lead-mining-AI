@@ -4,6 +4,21 @@ const nextConfig: NextConfig = {
   // Emit a self-contained server bundle (.next/standalone) for the Docker
   // runner image — no node_modules copy, just `node server.js`.
   output: "standalone",
+  // Allow cross-origin cookies from the backend service in production
+  // (the backend CORS is already configured to accept all origins).
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Access-Control-Allow-Methods", value: "GET, POST, PUT, DELETE, PATCH, OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "*" },
+          { key: "Access-Control-Allow-Credentials", value: "true" },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     // Read the backend URL at build time; defaults to localhost for dev.
     // In production, the LEADMINE_BACKEND_ORIGIN env var must be set

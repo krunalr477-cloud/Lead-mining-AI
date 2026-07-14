@@ -26,11 +26,11 @@ WORKDIR /app
 ARG NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY=""
 ARG NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=""
 # Server-side rewrite target — defaults to localhost but must be overridden
-# for production (e.g. the Render internal service URL).
-ARG LEADMINE_BACKEND_ORIGIN="https://leadmine-backend.onrender.com"
+# for production (e.g. via Docker ARG or runtime env).
+ARG LEADMINE_BACKEND_ORIGIN="http://localhost:8000"
 ENV NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY \
     NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=$NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID \
-    LEADMINE_BACKEND_ORIGIN=https://leadmine-backend.onrender.com \
+    LEADMINE_BACKEND_ORIGIN=$LEADMINE_BACKEND_ORIGIN \
     NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /app/node_modules ./node_modules

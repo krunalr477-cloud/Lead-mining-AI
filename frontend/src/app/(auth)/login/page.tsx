@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { HelpCircle, LogIn } from "lucide-react";
+import { HelpCircle, LogIn, Sparkles } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Button } from "@/components/ui/Button";
 import { MicroLabel } from "@/components/ui/MicroLabel";
@@ -41,7 +41,7 @@ function LoginForm() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.me() });
       router.replace(next);
     } catch {
-      toast.error("Dev login failed", "Is the backend running on :8000?");
+      toast.error("Login failed", "Please try again or refresh the page.");
       setLoading(null);
     }
   };
@@ -61,7 +61,7 @@ function LoginForm() {
     } catch {
       toast.error(
         "Google sign-in isn't set up yet",
-        "Add Google OAuth Client ID/Secret in Settings → Integrations, or use Dev Login. See Help for the 5-minute setup.",
+        "Add Google OAuth Client ID/Secret in Settings → Integrations, or use Demo Login.",
       );
       setLoading(null);
     }
@@ -82,7 +82,7 @@ function LoginForm() {
     } catch {
       toast.error(
         "Microsoft sign-in isn't set up yet",
-        "Add Microsoft Client ID/Secret in Settings → Integrations, or use Dev Login. See Help.",
+        "Add Microsoft Client ID/Secret in Settings → Integrations, or use Demo Login.",
       );
       setLoading(null);
     }
@@ -108,8 +108,26 @@ function LoginForm() {
           </Panel.Header>
 
           <div className="flex flex-col gap-3">
+            {/* Demo login is the primary, one-click entry for everyone */}
             <Button
               variant="primary"
+              size="lg"
+              className="w-full"
+              loading={loading === "dev"}
+              onClick={devLogin}
+            >
+              <Sparkles className="size-4" />
+              Try Demo (No Setup Needed)
+            </Button>
+
+            <div className="flex items-center gap-3 py-1">
+              <span className="h-px flex-1 bg-border" />
+              <MicroLabel>or sign in with</MicroLabel>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+
+            <Button
+              variant="secondary"
               size="lg"
               className="w-full"
               loading={loading === "google"}
@@ -129,36 +147,12 @@ function LoginForm() {
               <MicrosoftGlyph className="size-4" />
               Continue with Microsoft
             </Button>
-
-            <div className="flex items-center gap-3 py-1">
-              <span className="h-px flex-1 bg-border" />
-              <MicroLabel>or</MicroLabel>
-              <span className="h-px flex-1 bg-border" />
-            </div>
-
-            <Button
-              variant="secondary"
-              size="lg"
-              className="w-full"
-              loading={loading === "dev"}
-              onClick={devLogin}
-            >
-              Dev Login (Demo)
-            </Button>
-
-            <Link
-              href="/help"
-              className="mt-1 inline-flex items-center justify-center gap-1.5 text-xs text-muted transition-colors hover:text-accent"
-            >
-              <HelpCircle className="size-3.5" />
-              Need help connecting? →
-            </Link>
           </div>
 
           <Panel.Section divided className="mt-4">
             <p className="text-xs leading-relaxed text-muted">
-              Dev login issues a demo session with mock adapters. Real Google or Microsoft
-              sign-in requires the backend to be configured with the matching OAuth credentials.
+              Demo Login gives you instant access with mock data — no API keys or OAuth setup required.
+              Real Google or Microsoft sign-in requires the backend to be configured with matching OAuth credentials.
             </p>
           </Panel.Section>
         </Panel>

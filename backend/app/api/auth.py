@@ -198,11 +198,13 @@ async def me(user: CurrentUser, session: SessionDep) -> MeResponse:
 
 @router.post("/auth/dev-login")
 async def dev_login(response: Response, session: SessionDep) -> MeResponse:
-    """Development-only login: admin user in the "Demo Workspace" tenant."""
-    settings = get_settings()
-    if settings.environment != "development":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    """Open-access demo login: admin user in the "Demo Workspace" tenant.
 
+    Available in ALL environments (development, staging, production).
+    The demo tenant uses mock adapters only — no real API calls are made.
+    This endpoint is the public entry point so anyone with the app URL can
+    explore the tool without setting up OAuth providers.
+    """
     # Upsert by the canonical demo IDs (shared with the demo seed) so dev-login
     # and `make seed` always converge on ONE tenant/user — never a duplicate.
     tenant = await session.get(Tenant, DEMO_TENANT_ID)

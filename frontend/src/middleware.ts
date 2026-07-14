@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const SESSION_COOKIE = "lm_session";
 
 /** Paths that render without a session. */
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/"];
 
 /**
  * Redirect unauthenticated users to /login. Presence of the httpOnly
@@ -19,12 +19,12 @@ export function middleware(req: NextRequest) {
   if (!hasSession && !isPublic) {
     const loginUrl = new URL("/login", req.url);
     // Preserve intended destination for post-login redirect.
-    if (pathname !== "/") loginUrl.searchParams.set("next", pathname);
+    if (pathname !== "/" && pathname !== "/login") loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Signed-in users hitting /login go to the dashboard.
-  if (hasSession && pathname === "/login") {
+  // Signed-in users hitting /login or / go to the dashboard.
+  if (hasSession && (pathname === "/login" || pathname === "/")) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 

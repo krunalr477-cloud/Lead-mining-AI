@@ -30,10 +30,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # ---------------------------------------------------------------------------
-  # Full profile: containerized application stack (production-parity).
-  # Day-to-day dev runs api/worker/beat/web natively — see Makefile `make dev`.
-  # ---------------------------------------------------------------------------
+  # -- Application services (default profile for local Docker dev) ----------
+  # The "full" profile adds worker + beat for real job processing.
 
   api:
     profiles: ["full"]

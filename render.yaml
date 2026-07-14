@@ -5,15 +5,19 @@
 # Documentation: https://render.com/docs/blueprint-spec
 #
 # Services defined:
-#   1. leadmine-backend — FastAPI (Python 3.12) Docker service on port 8000
+#   1. leadmine-backend  — FastAPI (Python 3.12) Docker service on port 8000
 #   2. leadmine-frontend — Next.js Docker service on port 3000
-#   3. leadmine-db      — Render Postgres (free tier)
+#   3. leadmine-db       — Render Postgres (free tier)
+#   4. leadmine-redis    — Render Redis (free tier) for Celery broker + SSE
 #
 # Notes:
 #   - Free Postgres expires after 30 days. Upgrade to paid to keep data.
+#   - Free Redis expires after 30 days. Upgrade to paid to keep data.
 #   - Free web services spin down after 15 min of inactivity (~1 min cold start).
-#   - DEMO_MODE=true so no real Redis/API calls are needed.
-#   - No code changes needed; this Blueprint uses the existing Dockerfiles.
+#   - DEMO_MODE=true so mock adapters run without real provider keys.
+#   - ADAPTER_MODE=mock forces all adapters to mock regardless of keys.
+#   - The frontend Dockerfile ARG is set via build environment to point at
+#     the backend service's internal Render URL.
 # ============================================================================
 
 services:
@@ -35,6 +39,12 @@ services:
         fromDatabase:
           name: leadmine-db
           property: connectionString
+      # ---- Redis (injected from connected service) ----------------------
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: leadmine-redis
+          property: connectionString
       # ---- Core settings ------------------------------------------------
       - key: JWT_SECRET
         generateValue: true
@@ -46,9 +56,6 @@ services:
         value: "1"
       - key: ADAPTER_MODE
         value: mock
-      # ---- Redis placeholder (not used in demo mode) --------------------
-      - key: REDIS_URL
-        value: redis://localhost:6379/0
       # ---- Internal service URLs (public domains for OAuth) ------------
       - key: APP_BASE_URL
         value: https://leadmine-backend.onrender.com
@@ -63,7 +70,7 @@ services:
         value: "https://leadmine-frontend.onrender.com/api/v1/auth/google/callback"
       - key: GOOGLE_MAPS_API_KEY
         sync: false
-      # ---- Third-party providers (optional) ----------------------------
+      # ---- Third-party providers (optional, not needed in demo mode) ----
       - key: ROCKETREACH_API_KEY
         sync: false
       - key: MILLIONVERIFIER_API_KEY
@@ -102,6 +109,11 @@ services:
     plan: free
     autoDeploy: true
     branch: main
+    buildCommand: |
+      docker build -t leadmine-frontend \
+        --build-arg LEADMINE_BACKEND_ORIGIN=http://leadmine-backend:8000 \
+        .
+    startCommand: docker run --rm -p 3000:3000 leadmine-frontend
     envVars:
       - key: LEADMINE_BACKEND_ORIGIN
         value: https://leadmine-backend.onrender.com
@@ -113,3 +125,7 @@ databases:
     plan: free
     databaseName: leadmine
     user: leadmine
+
+redis:
+  - name: leadmine-redis
+    plan: free

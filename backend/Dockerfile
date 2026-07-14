@@ -28,6 +28,10 @@ WORKDIR /app
 
 # --- Builder: frozen runtime venv (main deps only) ---------------------------
 FROM base AS builder
+# libpq-dev is needed to compile psycopg[binary] during uv sync.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 # Layer-cache the dependency solve: only pyproject + lock invalidate it.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -36,6 +40,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # --- Builder (worker): venv WITH dev group (playwright package) ---------------
 FROM base AS builder-worker
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project

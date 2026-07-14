@@ -49,13 +49,11 @@ services:
       # ---- Redis placeholder (not used in demo mode) --------------------
       - key: REDIS_URL
         value: redis://localhost:6379/0
-      # ---- Internal service URLs (constructed from hostport) ------------
-      #    hostport gives "name:port" (e.g. leadmine-backend:8000)
-      #    We prepend http:// to build the full URL
+      # ---- Internal service URLs (public domains for OAuth) ------------
       - key: APP_BASE_URL
-        value: http://leadmine-backend:8000
+        value: https://leadmine-backend.onrender.com
       - key: FRONTEND_URL
-        value: http://leadmine-frontend:3000
+        value: https://leadmine-frontend.onrender.com
       # ---- Google OAuth (optional) -------------------------------------
       - key: GOOGLE_CLIENT_ID
         sync: false
@@ -104,7 +102,7 @@ services:
     branch: main
     envVars:
       - key: LEADMINE_BACKEND_ORIGIN
-        value: http://leadmine-backend:8000
+        value: https://leadmine-backend.onrender.com
       - key: NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY
         sync: false
 

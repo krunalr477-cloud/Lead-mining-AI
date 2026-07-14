@@ -25,8 +25,12 @@ WORKDIR /app
 # Browser-safe public env, inlined into the client bundle at build time.
 ARG NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY=""
 ARG NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=""
+# Server-side rewrite target — defaults to localhost but must be overridden
+# for production (e.g. the Render internal service URL).
+ARG LEADMINE_BACKEND_ORIGIN=""
 ENV NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY \
     NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=$NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID \
+    LEADMINE_BACKEND_ORIGIN=http://leadmine-backend:8000 \
     NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /app/node_modules ./node_modules

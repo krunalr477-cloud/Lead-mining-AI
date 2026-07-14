@@ -24,6 +24,7 @@ services:
     runtime: docker
     rootDir: backend
     dockerfilePath: Dockerfile
+    dockerfileTarget: api
     region: oregon
     plan: free
     autoDeploy: true

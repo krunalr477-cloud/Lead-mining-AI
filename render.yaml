@@ -46,14 +46,24 @@ services:
         value: "1"
       - key: ADAPTER_MODE
         value: mock
+      # ---- Redis placeholder (not used in demo mode) --------------------
       - key: REDIS_URL
         value: redis://localhost:6379/0
+      # ---- Internal service URLs (constructed from hostport) ------------
+      #    hostport gives "name:port" (e.g. leadmine-backend:8000)
+      #    We prepend http:// to build the full URL
+      - key: APP_BASE_URL
+        value: http://leadmine-backend:8000
+      - key: FRONTEND_URL
+        value: http://leadmine-frontend:3000
+      # ---- Google OAuth (optional) -------------------------------------
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
         value: ""
+      # ---- Third-party providers (optional) ----------------------------
       - key: ROCKETREACH_API_KEY
         sync: false
       - key: MILLIONVERIFIER_API_KEY
@@ -66,6 +76,7 @@ services:
         value: mock
       - key: SERP_API_KEY
         sync: false
+      # ---- Security -----------------------------------------------------
       - key: ENCRYPTION_KEY
         generateValue: true
       - key: DEFAULT_SEND_LIMIT_PER_HOUR
@@ -80,16 +91,6 @@ services:
         value: "false"
       - key: ENABLE_COMPLIANCE_GATED_SOURCES
         value: "false"
-      - key: APP_BASE_URL
-        fromService:
-          type: web
-          name: leadmine-backend
-          envVarKey: INTERNAL_SERVICE_URL
-      - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: leadmine-frontend
-          envVarKey: INTERNAL_SERVICE_URL
 
   # -- Frontend: Next.js -------------------------------------------------
   - type: web
@@ -103,10 +104,7 @@ services:
     branch: main
     envVars:
       - key: LEADMINE_BACKEND_ORIGIN
-        fromService:
-          type: web
-          name: leadmine-backend
-          envVarKey: INTERNAL_SERVICE_URL
+        value: http://leadmine-backend:8000
       - key: NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY
         sync: false
 

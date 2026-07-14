@@ -115,12 +115,20 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         """psycopg (sync) URL for Celery workers and Alembic."""
-        return self.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
+        url = self.database_url
+        # Normalize: Render/other providers may inject plain "postgresql://" (no driver)
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+        return url
 
     @property
     def async_database_url(self) -> str:
         """asyncpg URL for the FastAPI app."""
-        return self.database_url.replace("postgresql+psycopg://", "postgresql+asyncpg://")
+        url = self.database_url
+        # Normalize: Render/other providers may inject plain "postgresql://" (no driver)
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        url = url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+        return url
 
     def source_mode_override(self, source_name: str) -> AdapterMode | None:
         """Per-source env override, e.g. SOURCE_GOOGLE_MAPS_MODE=real."""

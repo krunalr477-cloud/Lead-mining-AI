@@ -61,6 +61,8 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         value: "https://leadmine-frontend.onrender.com/api/v1/auth/google/callback"
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
       # ---- Third-party providers (optional) ----------------------------
       - key: ROCKETREACH_API_KEY
         sync: false
